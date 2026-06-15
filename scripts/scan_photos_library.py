@@ -256,32 +256,77 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
 
     # Get album membership (asset PK -> list of album titles)
     album_map = {}  # asset_pk -> [album_title, ...]
+    shared_album_map = {}  # asset_pk -> [shared_album_title, ...]
     try:
-        cursor = photos_db.execute("""
-            SELECT ja.Z_3ASSETS AS asset_pk, ga.ZTITLE AS album_title
-            FROM Z_33ASSETS ja
-            JOIN ZGENERICALBUM ga ON ja.Z_33ALBUMS = ga.Z_PK
-            WHERE ga.ZTITLE IS NOT NULL AND ga.ZTITLE != ''
-        """)
-        for row in cursor:
-            album_map.setdefault(row["asset_pk"], []).append(row["album_title"])
+        # Dynamically find junction table name
+        junction_tables = [row[0] for row in photos_db.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'Z_%ASSETS'"
+        ).fetchall()]
+        junction_table = junction_tables[0] if junction_tables else "Z_33ASSETS"
+
+        # Get column names for junction table
+        j_cols = [row[1] for row in photos_db.execute(f"PRAGMA table_info({junction_table})").fetchall()]
+        album_col = next((c for c in j_cols if "ALBUM" in c.upper()), None)
+        asset_col = next((c for c in j_cols if "ASSET" in c.upper()), None)
+
+        if album_col and asset_col:
+            # Get CloudSharedAlbum Z_ENT value
+            shared_ent = None
+            try:
+                ent_row = photos_db.execute(
+                    "SELECT Z_PK FROM Z_PRIMARYKEY WHERE Z_ENTITYNAME = 'CloudSharedAlbum'"
+                ).fetchone()
+                if ent_row:
+                    shared_ent = ent_row[0]
+            except sqlite3.OperationalError:
+                pass
+
+            cursor = photos_db.execute(f"""
+                SELECT ja.{asset_col} AS asset_pk, ga.ZTITLE AS album_title,
+                       ga.Z_ENT AS album_ent, ga.ZCLOUDOWNERFULLNAME AS cloud_owner,
+                       ga.ZISOWNED AS is_owned
+                FROM {junction_table} ja
+                JOIN ZGENERICALBUM ga ON ja.{album_col} = ga.Z_PK
+                WHERE ga.ZTITLE IS NOT NULL AND ga.ZTITLE != ''
+            """)
+            for row in cursor:
+                is_shared = (shared_ent is not None and row["album_ent"] == shared_ent) or \
+                            (row["cloud_owner"] is not None and row["cloud_owner"] != "")
+                if is_shared:
+                    shared_album_map.setdefault(row["asset_pk"], []).append(row["album_title"])
+                else:
+                    album_map.setdefault(row["asset_pk"], []).append(row["album_title"])
     except sqlite3.OperationalError:
         # Junction table might not exist in older Photos versions
         pass
 
-    # Get all assets
+    # Get iCloud local availability (from ZCLOUDRESOURCE)
+    icloud_available_map = {}  # asset UUID -> is_locally_available
+    try:
+        cursor = photos_db.execute("""
+            SELECT cr.ZASSETUUID, cr.ZISLOCALLYAVAILABLE
+            FROM ZCLOUDRESOURCE cr
+            WHERE cr.ZISLOCALLYAVAILABLE IS NOT NULL
+        """)
+        for row in cursor:
+            icloud_available_map[row[0]] = bool(row[1])
+    except sqlite3.OperationalError:
+        pass
+
+    # Get all assets (include ZUUID for iCloud lookup)
     cursor = photos_db.execute("""
         SELECT Z_PK, ZDIRECTORY, ZFILENAME, ZHEIGHT, ZWIDTH,
                ZFAVORITE, ZHIDDEN, ZKIND, ZISDETECTEDSCREENSHOT,
                ZDUPLICATEASSETVISIBILITYSTATE, ZDATECREATED,
-               ZHDRTYPE, ZCLOUDLOCALSTATE
+               ZHDRTYPE, ZCLOUDLOCALSTATE, ZUUID
         FROM ZASSET
         WHERE ZTRASHEDSTATE = 0
     """)
 
     entries = []
     scan_time = datetime.now().isoformat()
-    stats = {"total": 0, "photo": 0, "video": 0, "screenshot": 0, "favorite": 0, "skipped_not_found": 0}
+    stats = {"total": 0, "photo": 0, "video": 0, "screenshot": 0, "favorite": 0,
+             "skipped_not_found": 0, "icloud_only": 0, "in_shared_album": 0}
 
     for row in cursor:
         pk = row["Z_PK"]
@@ -295,6 +340,7 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         date_created = row["ZDATECREATED"] or 0
         hdr_type = row["ZHDRTYPE"] or 0
         cloud_state = row["ZCLOUDLOCALSTATE"] or 0
+        asset_uuid = row["ZUUID"] or ""
 
         # Build file path
         if directory and filename:
@@ -312,6 +358,17 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             continue
 
         stats["total"] += 1
+
+        # Album membership (needed for stats before continue)
+        albums = album_map.get(pk, [])
+        album_str = "; ".join(albums) if albums else ""
+        shared_albums = shared_album_map.get(pk, [])
+        shared_album_str = "; ".join(shared_albums) if shared_albums else ""
+
+        # Check iCloud local availability (needed for stats)
+        icloud_locally_available = None
+        if asset_uuid:
+            icloud_locally_available = icloud_available_map.get(asset_uuid)
 
         # Determine category
         if is_screenshot:
@@ -331,10 +388,10 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             stats["video"] += 1
         else:
             stats["photo"] += 1
-
-        # Album membership
-        albums = album_map.get(pk, [])
-        album_str = "; ".join(albums) if albums else ""
+        if shared_albums:
+            stats["in_shared_album"] += 1
+        if icloud_locally_available is False:
+            stats["icloud_only"] += 1
 
         # Enrich with file-system metadata
         try:
@@ -414,6 +471,8 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             "photos_duplicate_visibility": dup_visibility,
             "photos_cloud_state": cloud_state,
             "photos_albums": album_str,
+            "photos_shared_albums": shared_album_str,
+            "photos_icloud_locally_available": icloud_locally_available,
         })
 
     photos_db.close()
@@ -451,13 +510,16 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             photos_screenshot INTEGER DEFAULT 0,
             photos_duplicate_visibility INTEGER DEFAULT 0,
             photos_cloud_state INTEGER DEFAULT 0,
-            photos_albums TEXT DEFAULT ''
+            photos_albums TEXT DEFAULT '',
+            photos_shared_albums TEXT DEFAULT '',
+            photos_icloud_locally_available INTEGER DEFAULT -1
         )
     """)
     # Indexes
     for idx in ["idx_sha256", "idx_phash", "idx_category", "idx_exif_datetime",
                 "idx_folder_tag", "idx_camera_model", "idx_aspect_ratio",
-                "idx_format_family", "idx_photos_favorite", "idx_photos_albums"]:
+                "idx_format_family", "idx_photos_favorite", "idx_photos_albums",
+                "idx_photos_shared_albums", "idx_photos_icloud_locally_available"]:
         col = idx.replace("idx_", "")
         conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON photos({col})")
 
@@ -475,6 +537,10 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
     print(f"  Total: {stats['total']} files")
     print(f"  Photos: {stats['photo']}, Videos: {stats['video']}, Screenshots: {stats['screenshot']}")
     print(f"  Favorites: {stats['favorite']}")
+    if stats['in_shared_album'] > 0:
+        print(f"  In shared albums: {stats['in_shared_album']}")
+    if stats['icloud_only'] > 0:
+        print(f"  iCloud-only (not local): {stats['icloud_only']}")
     if stats['skipped_not_found'] > 0:
         print(f"  Skipped (file not found / iCloud-only): {stats['skipped_not_found']}")
     if not HEIC_SUPPORT:

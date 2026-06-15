@@ -4,7 +4,7 @@ This file provides universal AI coding rules for the SnapTidy project. Compatibl
 
 ## Project Overview
 
-SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst), generates safe move plans, provides HTML thumbnail previews, and supports undo. It never deletes files. Supports both file-system scanning and Photos.app library scanning. Interactive one-command workflow via `organize_photos.py`.
+SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst), generates safe move plans, provides HTML thumbnail previews, and supports undo. It never deletes files. Supports both file-system scanning and Photos.app library scanning. Interactive one-command workflow via `organize_photos.py`. Import from external drives/Android into Photos.app with automatic dedup via `import_to_photos.py`.
 
 ## Code Conventions
 
@@ -51,6 +51,9 @@ Apply:
 
 Interactive:
   organize_photos.py        — One-command pipeline (collect prefs → scan → detect → preview → plan → confirm → apply)
+
+Import:
+  import_to_photos.py      — Import from external drive/Android → dedup against library → import unique via photoscript/osascript/ScriptingBridge
 ```
 
 Each step is independent and produces a .db/.csv for the next step. This design allows:
@@ -134,7 +137,7 @@ SQLite `photos` table columns:
 - Location: gps_latitude, gps_longitude
 - Camera: camera_make, camera_model
 - Priority: folder_tag, scan_root, scanned_at
-- Photos.app exclusive: photos_favorite, photos_hidden, photos_screenshot, photos_duplicate_visibility, photos_cloud_state, photos_albums
+- Photos.app exclusive: photos_favorite, photos_hidden, photos_screenshot, photos_duplicate_visibility, photos_cloud_state, photos_albums, photos_shared_albums, photos_icloud_locally_available
 
 Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible).
 
@@ -145,5 +148,47 @@ Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible)
 - imagehash: Perceptual hash computation
 - pillow-heif: Optional HEIC/HEIF image support
 - pyobjc-framework-Photos: Optional Photos.app PyObjC deletion
+- photoscript: Optional high-level Photos.app import (recommended for import workflow)
 
 Do NOT add pandas, numpy, or other heavy dependencies unless absolutely necessary.
+
+## Import Workflow (import_to_photos.py)
+
+Import photos from external sources (hard drives, Android phones) into Photos.app with automatic dedup.
+
+### Pipeline
+
+```
+Source Scan → SHA-256 Hash → Library Index (Photos.sqlite) → Dedup → Import → Report
+```
+
+### Import Methods (auto-selected by default)
+
+| Method | Dependencies | Notes |
+|--------|-------------|-------|
+| photoscript | `pip install photoscript` | Most reliable, high-level API |
+| osascript | None (macOS built-in) | No extra deps, slower per-file |
+| ScriptingBridge | `pip install pyobjc` | Low-level PyObjC, medium speed |
+
+### Key Functions
+
+- **detect_external_sources()** — scans `/Volumes/` for Android DCIM and external drive photo folders
+- **build_library_index()** — reads Photos.sqlite (copy, never original) → SHA-256 index for dedup
+- **dedup_against_library()** — SHA-256 comparison of source files vs library
+- **import_via_photoscript/osascript/scriptingbridge()** — imports unique files into Photos.app
+- **get_shared_albums()** — reads shared album info from Photos.sqlite (Z_ENT=CloudSharedAlbum)
+- **get_icloud_storage_info()** — checks available disk space for iCloud sync safety
+
+### Shared Album Limitations
+
+- **READ-ONLY**: AppleScript/ScriptingBridge cannot add photos to shared albums
+- Workaround: import to regular album → manually drag to shared album in Photos.app
+- Shared album detection: ZGENERICALBUM where Z_ENT = CloudSharedAlbum (from Z_PRIMARYKEY)
+- iCloud Shared Photo Library (macOS Ventura+) uses ZSHARE table — also read-only
+
+### iCloud Sync Awareness
+
+- **ZCLOUDRESOURCE.ZISLOCALLYAVAILABLE** — determines if a photo is local or iCloud-only
+- **ZASSET.ZCLOUDLOCALSTATE** — general cloud state flag
+- Library index only includes locally-available files (iCloud-only skipped to avoid missing file errors)
+- Storage check warns if < 5 GB available before import

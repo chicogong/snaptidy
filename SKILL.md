@@ -1,11 +1,11 @@
 ---
 name: snaptidy
-version: 3.2.0
+version: 3.3.0
 description: |
-  AI-powered photo & video organizer for macOS. Scan libraries, detect duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format), organize by date/category, preview with HTML thumbnails, and undo if needed — without ever deleting your originals.
-  Use this skill when you need to: scan and tidy large photo/video folders, find duplicate photos, deduplicate archives, organize a messy photo library, generate a dedup report for human review, preview duplicates before acting, or undo a move operation.
-  照片视频整理去重工具，支持SHA-256精确去重、pHash感知哈希、缩放去重、跨格式去重（HEIC↔JPEG）、连拍检测，按日期/分类整理，HTML缩略图预览，一键撤销操作，iCloud状态检测，Android/外置硬盘扫描，交互式整理流程，15+语言识别，智能优先级规则，Photos.app数据库直读，PyObjC安全删除，SQLite存储10万+照片。
-  Trigger phrases: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "scan for duplicates", "整理照片", "去重", "整理相册", "重複写真削除", "写真整理", "사진 정리", "중복 사진", "organiser mes photos", "Fotos organisieren", "organizar fotos", "정리 사진"
+  AI-powered photo & video organizer for macOS. Scan libraries, detect duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format), organize by date/category, preview with HTML thumbnails, and undo if needed — without ever deleting your originals. Import from external drives/Android into Photos.app with dedup.
+  Use this skill when you need to: scan and tidy large photo/video folders, find duplicate photos, deduplicate archives, organize a messy photo library, generate a dedup report for human review, preview duplicates before acting, undo a move operation, import photos from external drives/Android into Photos.app with dedup, check iCloud sync status, read shared album info.
+  照片视频整理去重工具，支持SHA-256精确去重、pHash感知哈希、缩放去重、跨格式去重（HEIC↔JPEG）、连拍检测，按日期/分类整理，HTML缩略图预览，一键撤销操作，从外置硬盘/安卓手机导入Photos.app并去重，iCloud同步状态检测，共享相册读取，Android/外置硬盘扫描，交互式整理流程，15+语言识别，智能优先级规则，Photos.app数据库直读，PyObjC安全删除，SQLite存储10万+照片。
+  Trigger phrases: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "scan for duplicates", "import photos to Photos app", "import from Android", "整理照片", "去重", "整理相册", "导入照片", "重複写真削除", "写真整理", "사진 정리", "중복 사진", "organiser mes photos", "Fotos organisieren", "organizar fotos", "정리 사진"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -43,6 +43,10 @@ Invoke this skill when the user asks to:
 - Prepare a clean photo archive
 - Free up disk space by finding and moving duplicates
 - Consolidate photos from Android/iPhone/external drives
+- Import organized photos into Photos.app from external drives or Android
+- Deduplicate before importing to avoid duplicates in Photos.app
+- Read shared album information from Photos.sqlite
+- Check iCloud sync and local availability status
 - 整理照片、去重、清理相册
 - 重複写真を削除・整理する
 - 사진 정리, 중복 사진 찾기
@@ -294,6 +298,101 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --check-icloud
 - For Photos.app library scans, uses `photos_cloud_state` field from Photos.sqlite
 - Can trigger download via `brctl download` (macOS only)
 
+## Import to Photos.app (import_to_photos.py)
+
+Import photos from external drives or Android phones into macOS Photos.app, with automatic dedup against the existing library.
+
+### Basic Import
+
+```bash
+# Dry-run: preview what would be imported
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos --dry-run
+
+# Import all unique photos (duplicates skipped)
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos
+
+# Import into a specific album (auto-created if missing)
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos --album "Vacation 2025"
+
+# Import from Android DCIM
+python3 scripts/import_to_photos.py --source /Volumes/Android/DCIM --album "Android Import"
+```
+
+### Import Workflow
+
+1. **Scan source** — recursively find all media files (jpg, png, heic, mov, mp4, etc.)
+2. **Build library index** — read Photos.sqlite to build SHA-256 index of existing library
+3. **Dedup** — compare source file SHA-256 against library; skip duplicates
+4. **Import** — import unique files via photoscript / osascript / ScriptingBridge
+5. **Report** — generate JSON report with import summary, duplicates found, and errors
+
+### Import Methods
+
+| Method | Flag | Dependencies | Speed | Notes |
+|--------|------|-------------|-------|-------|
+| Auto | `--method auto` | (picks best available) | — | Default |
+| photoscript | `--method photoscript` | `pip install photoscript` | Medium | Most reliable |
+| osascript | `--method osascript` | None (macOS built-in) | Slow | No extra deps |
+| ScriptingBridge | `--method scriptingbridge` | `pip install pyobjc` | Medium | Low-level PyObjC |
+
+### External Source Detection
+
+```bash
+# Detect connected Android phones and external drives
+python3 scripts/import_to_photos.py --detect-sources
+```
+
+Detects:
+- **Android phones** via DCIM folders on mounted volumes (Samsung, Pixel, OnePlus, Xiaomi, Huawei, etc.)
+- **External drives** with Photos, Pictures, or Import folders
+- **Camera SD cards** via DCIM folders
+
+### Shared Album Support
+
+```bash
+# List shared albums from Photos.sqlite
+python3 scripts/import_to_photos.py --show-shared-albums
+```
+
+Reads shared album information from Photos.sqlite:
+- Album title, owner name, ownership status
+- Whether multiple contributors are enabled
+- Public URL status
+- Asset count
+
+**⚠️ Limitation**: Shared albums are **read-only** via AppleScript/ScriptingBridge. You cannot programmatically add photos to shared albums. To add photos:
+1. Import to a regular album first
+2. Manually drag photos from the regular album to the shared album in Photos.app
+
+### iCloud Considerations
+
+- **Library index** only includes files that exist locally (iCloud-only files are skipped)
+- **Storage check** warns if available disk space is < 5 GB (iCloud sync may fail)
+- **Import report** includes total import size for storage planning
+- After import, Photos.app will automatically sync to iCloud if enabled
+
+### Import Report
+
+Each import generates a JSON report:
+
+```json
+{
+  "generated_at": "2025-06-15T15:00:00",
+  "source_path": "/Volumes/External/Photos",
+  "dry_run": false,
+  "summary": {
+    "total_source_files": 250,
+    "unique_files": 180,
+    "duplicate_files": 70,
+    "imported": 180,
+    "errors": 0
+  },
+  "duplicates": [...],
+  "imported": [...],
+  "errors": []
+}
+```
+
 ## Smart Priority Rules
 
 When deciding which duplicate to KEEP, SnapTidy scores files by:
@@ -392,3 +491,7 @@ Algorithm:
 - **Undo expired**: Undo records expire after 30 days. Check `undo_records/` for existing records.
 - **iCloud files skipped**: iCloud-only files (not downloaded locally) are skipped during move. Use `--check-icloud` to detect them, or download via `brctl download`.
 - **Android not detected**: Ensure Android File Transfer is installed and the phone is unlocked. Check `/Volumes/` for mount points.
+- **Import fails — Photos.app not running**: Import requires Photos.app to be running. Launch Photos.app first, or the script will attempt to activate it.
+- **Import method unavailable**: If `photoscript` is not installed, the script falls back to `osascript`. Install with `pip install photoscript` for the best experience.
+- **Shared albums not appearing**: Shared albums are detected via `Z_ENT = CloudSharedAlbum` in Photos.sqlite. If no shared albums exist, the list will be empty.
+- **Import duplicates**: Use `--skip-duplicates` (default) to avoid importing files already in the library. Use `--no-skip-duplicates` to force import.
