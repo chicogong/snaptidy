@@ -103,8 +103,25 @@ def score_file(meta: dict, strategy: str, prefer_folders: list = None) -> float:
     elif category == "wechat":
         score -= 10  # Penalize WeChat compressed images
 
-    # Preferred folder bonus (+50)
+    # Default folder priority (applied even without --prefer-folder)
+    # Camera originals and organized folders are preferred over backups/downloads
     folder_tag = meta.get("folder_tag") or ""
+    if folder_tag:
+        ft_lower = folder_tag.lower()
+        # High-priority folders (camera originals, organized archives)
+        if any(kw in ft_lower for kw in ("dcim", "camera", "photos", "相册", "照片")):
+            score += 25
+        # Medium-priority folders (date-organized, events)
+        elif any(kw in ft_lower for kw in ("202", "201", "200", "event", "旅行", "travel")):
+            score += 10
+        # Low-priority folders (backups, downloads, exports)
+        elif any(kw in ft_lower for kw in ("backup", "备份", "download", "下载", "export", "导出")):
+            score -= 15
+        # Penalize WeChat/社交 folders
+        elif any(kw in ft_lower for kw in ("wechat", "微信", "micro")):
+            score -= 10
+
+    # Explicit preferred folder bonus (+50, overrides default priority)
     if prefer_folders and folder_tag in prefer_folders:
         score += 50
 

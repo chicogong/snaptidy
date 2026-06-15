@@ -72,14 +72,19 @@ SKIP_DIR_SUFFIXES = {
 }
 
 # Screenshot detection patterns (multilingual)
+# NOTE: "IMG_" is NOT listed here — iOS camera photos also use IMG_ prefix (JPG).
+# iOS screenshots are IMG_*.PNG (uppercase), handled separately in detect_category().
 SCREENSHOT_PATTERNS = [
     "screenshot", "screen shot",
     "截图", "截屏",
     "スクリーンショット",
     "스크린샷",
     "скриншот",
-    "IMG_",  # iOS screenshot prefix (e.g. IMG_1234.PNG)
 ]
+
+# iOS screenshot: IMG_ followed by digits, saved as PNG (not JPG).
+# Camera photos are also IMG_ but always JPG.
+IOS_SCREENSHOT_RE = __import__("re").compile(r"^IMG_\d+\.PNG$", __import__("re").IGNORECASE)
 
 # WeChat image patterns
 WECHAT_PATTERNS = [
@@ -221,7 +226,16 @@ def detect_category(name: str, ext: str) -> str:
     """Auto-detect photo category based on filename and extension."""
     name_lower = name.lower()
 
+    # Burst/HDR detection (check BEFORE screenshot — IMG_0010_HDR.jpg is burst, not screenshot)
+    for pattern in BURST_PATTERNS:
+        if pattern.lower() in name_lower:
+            return "burst"
+
     # Screenshot detection
+    # 1. iOS screenshot pattern: IMG_0001.PNG (not .JPG — those are camera photos)
+    if IOS_SCREENSHOT_RE.match(name):
+        return "screenshot"
+    # 2. General screenshot keywords
     for pattern in SCREENSHOT_PATTERNS:
         if pattern.lower() in name_lower:
             return "screenshot"
@@ -230,11 +244,6 @@ def detect_category(name: str, ext: str) -> str:
     for pattern in WECHAT_PATTERNS:
         if pattern.lower() in name_lower:
             return "wechat"
-
-    # Burst/HDR detection
-    for pattern in BURST_PATTERNS:
-        if pattern.lower() in name_lower:
-            return "burst"
 
     # RAW photo
     if ext in ("dng", "cr2", "nef", "arw"):

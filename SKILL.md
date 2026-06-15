@@ -146,7 +146,8 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | EXIF completeness | High | Has metadata = likely original |
 | Format (RAW > HEIC > JPG) | Medium | Better format = better quality |
 | Category (photo > wechat > screenshot) | Medium | Real photos over screenshots |
-| Folder preference | Configurable | User-specified priority folders |
+| Folder priority (auto) | Medium | DCIM/Photos > Backup/Downloads |
+| Folder preference (manual) | High | User-specified priority folders |
 
 Strategies: `--strategy quality` (default), `oldest`, `newest`, `folder`
 
@@ -154,10 +155,10 @@ Strategies: `--strategy quality` (default), `oldest`, `newest`, `folder`
 
 | Category | Detected by |
 |----------|------------|
-| photo | Default for camera photos |
-| screenshot | "screenshot", "截图", "截屏", "スクリーンショット", "스크린샷", "скриншот" |
+| photo | Default for camera photos (including `IMG_*.JPG`) |
+| screenshot | "screenshot", "截图", "截屏", "スクリーンショット", "스크린샷", "скриншот", or `IMG_\d+.PNG` (iOS) |
 | wechat | "mmexport", "wx_camera_", "microMsg", "微信" |
-| burst | "_HDR", "_burst", "连拍" |
+| burst | "_HDR", "_burst", "连拍" (checked before screenshot) |
 | video | Video file extensions |
 
 ## Storage & Performance
@@ -177,6 +178,6 @@ Strategies: `--strategy quality` (default), `oldest`, `newest`, `folder`
 
 - **Permission denied**: Enable Full Disk Access (System Settings → Privacy & Security → Full Disk Access)
 - **No EXIF data**: Screenshots and downloaded photos lack EXIF. Scan still works.
-- **pHash false positives**: Solid-color images produce identical pHash. Use SHA-256 as primary method.
+- **pHash false positives**: Solid-color or very simple images produce identical pHash. Use SHA-256 as primary method, pHash as secondary.
 - **Large library slow scan**: Use SQLite output (not CSV). Index is stored locally between runs.
 - **External drive**: Scan directly from the external drive path. Use `--prefer-folder` for the drive's photo folder.
