@@ -1,0 +1,19 @@
+name: snaptidy
+version: 1.0.0
+description: AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
+author: chicogong
+homepage: https://github.com/chicogong/snaptidy
+repository: https://github.com/chicogong/snaptidy
+license: MIT
+skill_file: SKILL.md
+tags:
+  - macos
+  - photo-organizer
+  - deduplication
+  - perceptual-hash
+  - photo-management
+  - file-organizer
+  - ai-skill
+categories:
+  - productivity
+  - media
