@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """Scan a folder of photos and videos and build a metadata index.
 
-This script walks a directory tree and collects basic metadata for image and video
-files.  The output is a CSV suitable for downstream duplicate detection and
-organisation.
+This script walks a directory tree and collects metadata for image and video
+files.  The output is stored in a SQLite database (preferred) or CSV.
 
 Metadata collected:
 
@@ -17,7 +16,11 @@ Metadata collected:
 * width/height – dimensions for images (empty for videos)
 * phash – perceptual hash for images (empty for videos or errors)
 * media_type – "image" or "video"
-* is_screenshot – true if the filename/path indicates a screenshot
+* category – auto-detected: "photo", "screenshot", "wechat", "burst", "video"
+* gps_latitude / gps_longitude – GPS coordinates from EXIF (if available)
+* camera_make / camera_model – camera info from EXIF (if available)
+* has_exif – whether the file contains EXIF metadata (bool)
+* folder_tag – top-level subfolder name under scan root (for priority rules)
 
 The script intentionally does not modify any files; it only reads metadata.
 """
@@ -25,42 +28,79 @@ The script intentionally does not modify any files; it only reads metadata.
 import argparse
 import csv
 import hashlib
+import json
 import os
+import sqlite3
 import sys
 from datetime import datetime
 
 try:
     from PIL import Image
 except ImportError:
-    print("Pillow is required. Install with pip install Pillow", file=sys.stderr)
+    print("Pillow is required. Install with: pip install Pillow", file=sys.stderr)
     sys.exit(1)
 
 try:
     import piexif
 except ImportError:
-    print("piexif is required. Install with pip install piexif", file=sys.stderr)
+    print("piexif is required. Install with: pip install piexif", file=sys.stderr)
     sys.exit(1)
 
 try:
     import imagehash
 except ImportError:
-    print("imagehash is required. Install with pip install imagehash", file=sys.stderr)
+    print("imagehash is required. Install with: pip install imagehash", file=sys.stderr)
     sys.exit(1)
 
 
 IMAGE_EXTS = {
     "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif",
+    "webp", "dng", "cr2", "nef", "arw",  # RAW formats
 }
 VIDEO_EXTS = {
     "mov", "mp4", "m4v", "avi", "mkv", "3gp", "mpg", "mpeg",
+    "hevc", "wmv", "flv",
 }
+
+# Skip patterns for directories
+SKIP_DIR_SUFFIXES = {
+    ".photoslibrary", ".photolibrary",
+    "Original_Backup_勿动", "99_Original_Backup",
+    ".trashes", ".Trashes", ".Spotlight-V100",
+    "__pycache__", ".git", ".svn",
+    "node_modules",
+}
+
+# Screenshot detection patterns (multilingual)
+SCREENSHOT_PATTERNS = [
+    "screenshot", "screen shot",
+    "截图", "截屏",
+    "スクリーンショット",
+    "스크린샷",
+    "скриншот",
+    "IMG_",  # iOS screenshot prefix (e.g. IMG_1234.PNG)
+]
+
+# WeChat image patterns
+WECHAT_PATTERNS = [
+    "mmexport", "wx_camera_", "wx_",
+    "microMsg", "WeiXin",
+    "微信", "wechat",
+]
+
+# Burst/HDR indicators in filenames
+BURST_PATTERNS = [
+    "_HDR", "_burst", "_Burst",
+    "HDR_", "burst_",
+    "连拍",
+]
 
 
 def compute_sha256(path: str) -> str:
     """Compute the SHA‑256 hash of a file in chunks."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
+        for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
 
@@ -70,38 +110,106 @@ def get_exif_datetime(path: str) -> str:
     try:
         exif_dict = piexif.load(path)
         dt = exif_dict.get("Exif", {}).get(piexif.ExifIFD.DateTimeOriginal)
+        if not dt:
+            # Fallback to Image DateTime
+            dt = exif_dict.get("0th", {}).get(piexif.ImageIFD.DateTime)
         if dt:
-            # EXIF values may be bytes; decode to string
             if isinstance(dt, bytes):
                 dt = dt.decode(errors="ignore")
-            # Some cameras append null characters; strip them
             dt_str = dt.replace("\x00", "").strip()
-            # EXIF date format is "YYYY:MM:DD HH:MM:SS"
             if len(dt_str) >= 19:
                 try:
                     dt_obj = datetime.strptime(dt_str[:19], "%Y:%m:%d %H:%M:%S")
                     return dt_obj.isoformat()
                 except Exception:
-                    # If parsing fails, fall through and return empty string
                     pass
     except Exception:
         return ""
     return ""
 
 
+def get_gps_coords(path: str) -> tuple:
+    """Extract GPS latitude/longitude from EXIF.  Returns (lat, lon) or ('', '')."""
+    try:
+        exif_dict = piexif.load(path)
+        gps_ifd = exif_dict.get("GPS", {})
+        if not gps_ifd:
+            return "", ""
+
+        def _convert_to_degrees(value):
+            """Convert GPS coordinates (degrees, minutes, seconds) to decimal."""
+            if not value or len(value) < 3:
+                return None
+            d = float(value[0][0]) / float(value[0][1]) if value[0][1] != 0 else 0
+            m = float(value[1][0]) / float(value[1][1]) if value[1][1] != 0 else 0
+            s = float(value[2][0]) / float(value[2][1]) if value[2][1] != 0 else 0
+            return d + m / 60.0 + s / 3600.0
+
+        lat_val = gps_ifd.get(piexif.GPSIFD.GPSLatitude)
+        lat_ref = gps_ifd.get(piexif.GPSIFD.GPSLatitudeRef)
+        lon_val = gps_ifd.get(piexif.GPSIFD.GPSLongitude)
+        lon_ref = gps_ifd.get(piexif.GPSIFD.GPSLongitudeRef)
+
+        lat = _convert_to_degrees(lat_val)
+        lon = _convert_to_degrees(lon_val)
+
+        if lat is not None and lon is not None:
+            if isinstance(lat_ref, bytes):
+                lat_ref = lat_ref.decode(errors="ignore")
+            if isinstance(lon_ref, bytes):
+                lon_ref = lon_ref.decode(errors="ignore")
+            if lat_ref == "S":
+                lat = -lat
+            if lon_ref == "W":
+                lon = -lon
+            return round(lat, 6), round(lon, 6)
+    except Exception:
+        pass
+    return "", ""
+
+
+def get_camera_info(path: str) -> tuple:
+    """Extract camera make/model from EXIF.  Returns (make, model) or ('', '')."""
+    try:
+        exif_dict = piexif.load(path)
+        zeroth = exif_dict.get("0th", {})
+        make = zeroth.get(piexif.ImageIFD.Make, "")
+        model = zeroth.get(piexif.ImageIFD.Model, "")
+        if isinstance(make, bytes):
+            make = make.decode(errors="ignore").strip()
+        if isinstance(model, bytes):
+            model = model.decode(errors="ignore").strip()
+        return make, model
+    except Exception:
+        return "", ""
+
+
+def has_exif_data(path: str) -> bool:
+    """Check if the file has meaningful EXIF data (beyond just file stats)."""
+    try:
+        exif_dict = piexif.load(path)
+        # Check for any of: exposure, GPS, actual camera info
+        has_exif_section = bool(exif_dict.get("Exif"))
+        has_gps = bool(exif_dict.get("GPS"))
+        zeroth = exif_dict.get("0th", {})
+        has_camera = bool(zeroth.get(piexif.ImageIFD.Make)) or bool(zeroth.get(piexif.ImageIFD.Model))
+        return has_exif_section or has_gps or has_camera
+    except Exception:
+        return False
+
+
 def compute_phash(path: str) -> str:
     """Compute perceptual hash for an image.  Returns hex string or '' on error."""
     try:
         with Image.open(path) as img:
-            # Convert to RGB to avoid issues with modes like CMYK or grayscale
             ph = imagehash.average_hash(img.convert("RGB"))
-            return ph.__str__()
+            return str(ph)
     except Exception:
         return ""
 
 
 def get_image_size(path: str) -> tuple:
-    """Return (width, height) of an image or ('','') on failure."""
+    """Return (width, height) of an image or ('', '') on failure."""
     try:
         with Image.open(path) as img:
             return img.width, img.height
@@ -109,46 +217,140 @@ def get_image_size(path: str) -> tuple:
         return "", ""
 
 
-def scan_directory(input_dir: str, output_csv: str) -> None:
-    """Walk through input_dir and write metadata to output_csv."""
+def detect_category(name: str, ext: str) -> str:
+    """Auto-detect photo category based on filename and extension."""
+    name_lower = name.lower()
+
+    # Screenshot detection
+    for pattern in SCREENSHOT_PATTERNS:
+        if pattern.lower() in name_lower:
+            return "screenshot"
+
+    # WeChat image detection
+    for pattern in WECHAT_PATTERNS:
+        if pattern.lower() in name_lower:
+            return "wechat"
+
+    # Burst/HDR detection
+    for pattern in BURST_PATTERNS:
+        if pattern.lower() in name_lower:
+            return "burst"
+
+    # RAW photo
+    if ext in ("dng", "cr2", "nef", "arw"):
+        return "photo"
+
+    # Video
+    if ext in VIDEO_EXTS:
+        return "video"
+
+    # Default
+    return "photo"
+
+
+def get_folder_tag(full_path: str, scan_root: str) -> str:
+    """Get the top-level subfolder name under scan root (for priority rules)."""
+    try:
+        rel = os.path.relpath(full_path, scan_root)
+        parts = rel.split(os.sep)
+        if len(parts) > 1:
+            return parts[0]
+    except Exception:
+        pass
+    return ""
+
+
+def init_db(db_path: str) -> sqlite3.Connection:
+    """Initialize SQLite database with the photos table."""
+    conn = sqlite3.connect(db_path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS photos (
+            file_path TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            extension TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            exif_datetime TEXT DEFAULT '',
+            file_mtime TEXT DEFAULT '',
+            width TEXT DEFAULT '',
+            height TEXT DEFAULT '',
+            phash TEXT DEFAULT '',
+            media_type TEXT NOT NULL DEFAULT 'image',
+            category TEXT NOT NULL DEFAULT 'photo',
+            gps_latitude TEXT DEFAULT '',
+            gps_longitude TEXT DEFAULT '',
+            camera_make TEXT DEFAULT '',
+            camera_model TEXT DEFAULT '',
+            has_exif INTEGER DEFAULT 0,
+            folder_tag TEXT DEFAULT '',
+            scan_root TEXT DEFAULT '',
+            scanned_at TEXT DEFAULT ''
+        )
+    """)
+    # Indexes for fast lookups
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON photos(sha256)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_phash ON photos(phash)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_category ON photos(category)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_exif_datetime ON photos(exif_datetime)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_folder_tag ON photos(folder_tag)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_camera_model ON photos(camera_model)")
+    conn.commit()
+    return conn
+
+
+def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> None:
+    """Walk through input_dir and write metadata to SQLite DB or CSV."""
+    input_dir = os.path.abspath(input_dir)
+    scan_time = datetime.now().isoformat()
     entries = []
+
     for root, dirs, files in os.walk(input_dir):
-        # Skip Photos libraries or backup directories
-        for skip in [".photoslibrary", ".photolibrary", "Original_Backup_勿动"]:
-            dirs[:] = [d for d in dirs if not d.endswith(skip)]
+        # Skip Photos libraries, backup dirs, and system dirs
+        dirs[:] = [d for d in dirs
+                    if not any(d.endswith(s) or d == s for s in SKIP_DIR_SUFFIXES)]
+
         for name in files:
-            ext = name.rsplit(".", 1)[-1].lower()
-            # only process known media types
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
             if ext not in IMAGE_EXTS and ext not in VIDEO_EXTS:
                 continue
+
             full_path = os.path.join(root, name)
             try:
                 stat = os.stat(full_path)
             except OSError:
                 continue
+
             size_bytes = stat.st_size
-            sha256 = compute_sha256(full_path)
-            # mtime
             mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
-            # EXIF datetime
+            category = detect_category(name, ext)
+            folder_tag = get_folder_tag(full_path, input_dir)
+
+            # Initialize fields common to images and videos
             exif_dt = ""
             width = ""
             height = ""
             phash = ""
+            gps_lat = ""
+            gps_lon = ""
+            camera_make = ""
+            camera_model = ""
+            has_exif_val = 0
+
             if ext in IMAGE_EXTS:
+                media_type = "image"
                 exif_dt = get_exif_datetime(full_path)
                 width, height = get_image_size(full_path)
                 phash = compute_phash(full_path)
-                media_type = "image"
+                gps_lat, gps_lon = get_gps_coords(full_path)
+                camera_make, camera_model = get_camera_info(full_path)
+                has_exif_val = 1 if has_exif_data(full_path) else 0
             else:
                 media_type = "video"
-            is_screenshot = (
-                "screenshot" in name.lower()
-                or "截图" in name or "截屏" in name
-                or "スクリーンショット" in name
-                or "스크린샷" in name
-                or "скриншот" in name.lower()
-            )
+
+            sha256 = compute_sha256(full_path)
+
             entries.append({
                 "file_path": full_path,
                 "filename": name,
@@ -161,34 +363,79 @@ def scan_directory(input_dir: str, output_csv: str) -> None:
                 "height": height,
                 "phash": phash,
                 "media_type": media_type,
-                "is_screenshot": str(is_screenshot),
+                "category": category,
+                "gps_latitude": gps_lat,
+                "gps_longitude": gps_lon,
+                "camera_make": camera_make,
+                "camera_model": camera_model,
+                "has_exif": has_exif_val,
+                "folder_tag": folder_tag,
+                "scan_root": input_dir,
+                "scanned_at": scan_time,
             })
-    # Write CSV
-    fieldnames = [
-        "file_path", "filename", "extension", "size_bytes", "sha256",
-        "exif_datetime", "file_mtime", "width", "height", "phash",
-        "media_type", "is_screenshot",
-    ]
-    with open(output_csv, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in entries:
-            writer.writerow(row)
+
+    if use_db:
+        # Write to SQLite
+        conn = init_db(output_path)
+        conn.execute("DELETE FROM photos WHERE scan_root = ?", (input_dir,))
+        for entry in entries:
+            cols = ", ".join(entry.keys())
+            placeholders = ", ".join("?" for _ in entry)
+            conn.execute(f"INSERT OR REPLACE INTO photos ({cols}) VALUES ({placeholders})",
+                         list(entry.values()))
+        conn.commit()
+
+        # Stats
+        total = len(entries)
+        categories = {}
+        for e in entries:
+            cat = e["category"]
+            categories[cat] = categories.get(cat, 0) + 1
+
+        print(f"Index written to SQLite: {output_path}")
+        print(f"  Total: {total} files")
+        for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
+            print(f"  {cat}: {count}")
+        conn.close()
+    else:
+        # Write to CSV (fallback)
+        fieldnames = list(entries[0].keys()) if entries else []
+        with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            for row in entries:
+                writer.writerow(row)
+        print(f"Index written to CSV: {output_path} ({len(entries)} files)")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Scan photos/videos and build index")
+    parser = argparse.ArgumentParser(
+        description="Scan photos/videos and build metadata index (SQLite or CSV)")
     parser.add_argument("--input", required=True, help="Directory to scan")
-    parser.add_argument("--output", required=True, help="Path to output CSV")
+    parser.add_argument("--output", required=True, help="Output path (.db for SQLite, .csv for CSV)")
+    parser.add_argument("--format", choices=["auto", "db", "csv"], default="auto",
+                        help="Output format (default: auto-detect from file extension)")
     args = parser.parse_args()
+
     input_dir = os.path.abspath(args.input)
-    output_csv = os.path.abspath(args.output)
+    output_path = os.path.abspath(args.output)
+
     if not os.path.isdir(input_dir):
         print(f"Error: {input_dir} is not a directory", file=sys.stderr)
         sys.exit(1)
-    os.makedirs(os.path.dirname(output_csv), exist_ok=True)
-    scan_directory(input_dir, output_csv)
-    print(f"Index written to {output_csv}")
+
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+    # Auto-detect format
+    fmt = args.format
+    if fmt == "auto":
+        use_db = output_path.endswith(".db")
+    elif fmt == "db":
+        use_db = True
+    else:
+        use_db = False
+
+    scan_directory(input_dir, output_path, use_db=use_db)
 
 
 if __name__ == "__main__":
