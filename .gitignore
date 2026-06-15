@@ -17,7 +17,7 @@ env/
 .Spotlight-V100
 .Trashes
 
-# Project-specific
+# Project-specific (generated output files)
 *.csv
 photo_index.json
 move_plan_*.csv

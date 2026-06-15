@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg)](https://www.apple.com/macos)
-[![WorkBuddy Skill](https://img.shields.io/badge/WorkBuddy-Skill-purple.svg)](https://codebuddy.cn)
+[![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg)](https://github.com/topics/ai-skill)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
@@ -15,12 +15,80 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 
 ## Key Features
 
-- **SHA-256 Exact Dedup** — Find byte-perfect duplicate files across your entire library
-- **Perceptual Hash Similarity** — Detect visually identical images using average hash (pHash)
-- **Rich Metadata Index** — Extract file size, EXIF dates, dimensions, and hashes into a structured CSV
-- **Safety-First Design** — Read-only scanning, move-only operations, CSV-based audit trail
-- **Conversation-Driven** — Interact through your AI assistant; no GUI or config files needed
-- **Zero Config** — Point at a directory and go. Works with any macOS photo/video folder
+- 🎯 **SHA-256 Exact Dedup** — Find byte-perfect duplicate files across your entire library
+- 👁️ **Perceptual Hash Similarity** — Detect visually identical images using average hash (pHash)
+- 📋 **Rich Metadata Index** — Extract file size, EXIF dates, dimensions, and hashes into a structured CSV
+- 🛡️ **Safety-First Design** — Read-only scanning, move-only operations, CSV-based audit trail
+- 💬 **Conversation-Driven** — Interact through your AI assistant; no GUI or config files needed
+- ⚡ **Zero Config** — Point at a directory and go. Works with any macOS photo/video folder
+- 🔌 **Multi-Platform** — Works with Claude Code, Cursor, Windsurf, WorkBuddy, OpenClaw, and more
+
+## Installation
+
+### Option 1: One-Prompt Install (Recommended)
+
+Just tell your AI assistant:
+
+> Install this skill: https://github.com/chicogong/snaptidy
+
+The AI will automatically clone the repo, install dependencies, and configure the skill.
+
+### Option 2: CLI Install
+
+```bash
+# Works with 45+ AI platforms (Claude Code, Cursor, Windsurf, etc.)
+npx skills add chicogong/snaptidy
+
+# Or via ClawHub (OpenClaw ecosystem)
+clawhub install snaptidy
+
+# Or via SkillHub (Tencent ecosystem)
+skillhub install snaptidy
+```
+
+### Option 3: Manual Install
+
+<details>
+<summary>Claude Code</summary>
+
+```bash
+git clone https://github.com/chicogong/snaptidy.git ~/.claude/skills/snaptidy
+cd ~/.claude/skills/snaptidy && pip install -r requirements.txt
+```
+</details>
+
+<details>
+<summary>Cursor</summary>
+
+```bash
+git clone https://github.com/chicogong/snaptidy.git
+cp -r snaptidy/.cursor/rules/snaptidy.mdc .cursor/rules/
+```
+</details>
+
+<details>
+<summary>Windsurf</summary>
+
+```bash
+git clone https://github.com/chicogong/snaptidy.git
+cp -r snaptidy/.windsurf/rules/snaptidy.md .windsurf/rules/
+```
+</details>
+
+<details>
+<summary>WorkBuddy</summary>
+
+```bash
+git clone https://github.com/chicogong/snaptidy.git ~/.workbuddy/skills/snaptidy
+cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
+```
+</details>
+
+<details>
+<summary>GitHub Copilot</summary>
+
+Copy `.github/copilot-instructions.md` to your project's `.github/` directory.
+</details>
 
 ## How It Works
 
@@ -60,20 +128,13 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - **Python 3.9+**
 - **Full Disk Access** enabled for your terminal (System Settings → Privacy & Security → Full Disk Access)
 
-### Install as a WorkBuddy Skill
+### Usage
 
-```bash
-# Clone the repo into your WorkBuddy skills directory
-git clone https://github.com/chicogong/snaptidy.git ~/.workbuddy/skills/snaptidy
+Tell your AI assistant what you want:
 
-# Install dependencies
-cd ~/.workbuddy/skills/snaptidy
-pip install -r requirements.txt
-```
+> *"Scan my photo library at /Volumes/Photos and find duplicates"*
 
-Then simply tell your AI assistant: *"Scan my photo library at /Volumes/Photos and find duplicates"*
-
-### Manual Usage
+Or run the scripts directly:
 
 ```bash
 # Step 1: Scan your photo library
@@ -120,11 +181,25 @@ python3 scripts/apply_move_plan.py --plan ./move_plan.csv
 
 ## Requirements
 
-- **Pillow** — Image reading, dimensions, format conversion
-- **piexif** — EXIF data extraction
-- **imagehash** — Perceptual hash computation (average hash)
+| Package | Purpose |
+|---------|---------|
+| **Pillow** | Image reading, dimensions, format conversion |
+| **piexif** | EXIF data extraction |
+| **imagehash** | Perceptual hash computation (average hash) |
 
 Only 3 dependencies. No heavy frameworks.
+
+## Platform Compatibility
+
+| Platform | Config File | Install Path |
+|----------|------------|--------------|
+| Claude Code | `CLAUDE.md` | `~/.claude/skills/snaptidy/` |
+| Cursor | `.cursor/rules/snaptidy.mdc` | Project `.cursor/rules/` |
+| Windsurf | `.windsurf/rules/snaptidy.md` | Project `.windsurf/rules/` |
+| GitHub Copilot | `.github/copilot-instructions.md` | Project `.github/` |
+| WorkBuddy | `SKILL.md` | `~/.workbuddy/skills/snaptidy/` |
+| OpenClaw | `SKILL.md` + `clawhub.yaml` | `~/.openclaw/skills/snaptidy/` |
+| Any AI agent | `AGENTS.md` | Project root |
 
 ## Contributing
 
@@ -134,6 +209,7 @@ Contributions are welcome! Some areas where help is especially appreciated:
 - **Video deduplication** — Key-frame hashing for video files using ffmpeg/opencv
 - **Date-based reorganization** — Sort photos into year/month folders based on EXIF dates
 - **Cross-platform support** — Extend beyond macOS to Linux and Windows
+- **Linux Foundation AGENTS.md** — Improve project-level AI rules
 
 Feel free to open an issue or submit a pull request.
 
@@ -143,4 +219,4 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## Acknowledgments
 
-Inspired by the macOS automation community and tools like [organize](https://github.com/tfeldmann/organize), [FileLens](https://github.com/priyanshul/get-file-details), and the [Apple CLI](https://github.com/Sankalpcreat/Apple-CLI) ecosystem.
+Inspired by the macOS automation community and tools like [organize](https://github.com/tfeldmann/organize), [FileLens](https://github.com/priyanshul/get-file-details), [Anthropic Skills](https://github.com/anthropics/skills), and the [Apple CLI](https://github.com/Sankalpcreat/Apple-CLI) ecosystem.

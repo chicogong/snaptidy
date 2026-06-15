@@ -1,0 +1,31 @@
+---
+description: SnapTidy - macOS photo/video organizer skill rules
+globs:
+alwaysApply: true
+---
+
+# SnapTidy Project Rules
+
+## Safety
+- NEVER delete files — only move them
+- NEVER enter .photoslibrary or .photolibrary directories
+- Always get user confirmation before applying move plans
+- Log all file operations to CSV audit trail
+
+## Code Style
+- Python 3.9+, PEP 8, 4-space indent
+- CLI scripts use argparse with --input/--output flags
+- All data exchange via CSV (UTF-8 with BOM)
+- No heavy dependencies (no pandas/numpy)
+
+## Pipeline
+1. scan_photos.py → photo_index.csv
+2. find_exact_duplicates.py → duplicates.csv
+3. generate_move_plan.py → move_plan.csv
+4. apply_move_plan.py → move_log.csv (requires user confirmation)
+
+## Testing
+```bash
+pip install -r requirements.txt
+python3 scripts/scan_photos.py --input /path/to/photos --output ./photo_index.csv
+```
