@@ -27,12 +27,16 @@ import subprocess
 def read_duplicates(dups_path: str) -> dict:
     """Read duplicates CSV, return {group_id: [file_path, ...]}."""
     groups = {}
+    match_types = {}  # group_id -> match_type
     with open(dups_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             gid = row.get("group_id")
             groups.setdefault(gid, []).append(row.get("file_path"))
-    return groups
+            mt = row.get("match_type", "")
+            if mt and gid not in match_types:
+                match_types[gid] = mt
+    return groups, match_types
 
 
 def load_metadata_db(index_path: str) -> dict:
@@ -157,16 +161,28 @@ def score_file(meta: dict, strategy: str, prefer_folders: list = None) -> float:
     return score
 
 
-def generate_plan(groups: dict, metadata: dict, target_root: str,
+def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: str,
                   strategy: str = "quality", prefer_folders: list = None,
                   use_trash: bool = False) -> list:
     """Generate a move plan using smart priority rules."""
     plan = []
     review_folder = "06_Duplicates_待确认删除" if not use_trash else "__TRASH__"
 
+    # Human-readable labels for match types
+    MATCH_TYPE_LABELS = {
+        "exact_phash": "identical pHash",
+        "fuzzy_phash": "similar pHash",
+        "scaled": "scaled duplicate",
+        "cross_format": "cross-format duplicate",
+        "burst_subsec": "burst photo",
+    }
+
     for group_id, paths in groups.items():
         if len(paths) < 2:
             continue
+
+        match_type = match_types.get(group_id, "")
+        match_label = MATCH_TYPE_LABELS.get(match_type, match_type)
 
         # Score each file and pick the best one to keep
         scored = []
@@ -203,6 +219,8 @@ def generate_plan(groups: dict, metadata: dict, target_root: str,
         for s, path, meta in scored[1:]:
             # Build reason for moving
             move_reason_parts = [f"duplicate of {keep_path} {keep_info}"]
+            if match_label:
+                move_reason_parts.append(f"type: {match_label}")
 
             # Explain why this file was chosen to move
             move_meta_parts = []
@@ -273,7 +291,7 @@ def main() -> None:
                         help="Move duplicates to macOS Trash instead of review folder")
     args = parser.parse_args()
 
-    dups = read_duplicates(os.path.abspath(args.duplicates))
+    dups, match_types = read_duplicates(os.path.abspath(args.duplicates))
     target_root = os.path.abspath(args.target_root)
 
     # Load metadata for smart scoring
@@ -285,7 +303,7 @@ def main() -> None:
         else:
             metadata = load_metadata_csv(index_path)
 
-    plan = generate_plan(dups, metadata, target_root,
+    plan = generate_plan(dups, match_types, metadata, target_root,
                          strategy=args.strategy,
                          prefer_folders=args.prefer_folder,
                          use_trash=args.trash)

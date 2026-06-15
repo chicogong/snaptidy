@@ -1,3 +1,5 @@
 Pillow
 piexif
 imagehash
+pillow-heif    # Optional: HEIC/HEIF image support (recommended on macOS)
+# pyobjc-framework-Photos  # Optional: Photos.app deletion (uncomment if needed)

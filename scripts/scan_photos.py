@@ -21,6 +21,10 @@ Metadata collected:
 * camera_make / camera_model – camera info from EXIF (if available)
 * has_exif – whether the file contains EXIF metadata (bool)
 * folder_tag – top-level subfolder name under scan root (for priority rules)
+* aspect_ratio – width/height ratio (3 decimal places, for scaled duplicate detection)
+* subsec_time – sub-second timestamp from EXIF SubSecTimeOriginal (for burst grouping)
+* format_family – format group: "jpeg", "heic", "png", "tiff", "raw", "webp", "other"
+  (for cross-format duplicate detection — HEIC vs JPEG of the same photo)
 
 The script intentionally does not modify any files; it only reads metadata.
 """
@@ -51,6 +55,14 @@ try:
 except ImportError:
     print("imagehash is required. Install with: pip install imagehash", file=sys.stderr)
     sys.exit(1)
+
+# Optional HEIC/HEIF support via pillow-heif
+try:
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    HEIC_SUPPORT = True
+except ImportError:
+    HEIC_SUPPORT = False
 
 
 IMAGE_EXTS = {
@@ -269,6 +281,54 @@ def get_folder_tag(full_path: str, scan_root: str) -> str:
     return ""
 
 
+def get_subsec_time(path: str) -> str:
+    """Extract SubSecTimeOriginal from EXIF.  Returns string or ''."""
+    try:
+        exif_dict = piexif.load(path)
+        subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTimeOriginal)
+        if not subsec:
+            # Fallback to SubSecTime (not "Original")
+            subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTime)
+        if subsec:
+            if isinstance(subsec, bytes):
+                subsec = subsec.decode(errors="ignore")
+            return str(subsec).strip().rstrip("\x00")
+    except Exception:
+        pass
+    return ""
+
+
+def get_format_family(ext: str) -> str:
+    """Group file extension into format family for cross-format dedup."""
+    ext_lower = ext.lower()
+    if ext_lower in ("jpg", "jpeg"):
+        return "jpeg"
+    elif ext_lower in ("heic", "heif"):
+        return "heic"
+    elif ext_lower == "png":
+        return "png"
+    elif ext_lower in ("tif", "tiff"):
+        return "tiff"
+    elif ext_lower in ("dng", "cr2", "nef", "arw"):
+        return "raw"
+    elif ext_lower == "webp":
+        return "webp"
+    else:
+        return "other"
+
+
+def compute_aspect_ratio(width, height) -> str:
+    """Compute width/height ratio rounded to 3 decimal places."""
+    try:
+        w = int(width)
+        h = int(height)
+        if w > 0 and h > 0:
+            return f"{w / h:.3f}"
+    except (ValueError, TypeError):
+        pass
+    return ""
+
+
 def init_db(db_path: str) -> sqlite3.Connection:
     """Initialize SQLite database with the photos table."""
     conn = sqlite3.connect(db_path)
@@ -298,6 +358,17 @@ def init_db(db_path: str) -> sqlite3.Connection:
             scanned_at TEXT DEFAULT ''
         )
     """)
+    # Migrate: add new columns if they don't exist (backward compatible)
+    new_columns = [
+        ("aspect_ratio", "TEXT DEFAULT ''"),
+        ("subsec_time", "TEXT DEFAULT ''"),
+        ("format_family", "TEXT DEFAULT ''"),
+    ]
+    for col_name, col_type in new_columns:
+        try:
+            conn.execute(f"ALTER TABLE photos ADD COLUMN {col_name} {col_type}")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
     # Indexes for fast lookups
     conn.execute("CREATE INDEX IF NOT EXISTS idx_sha256 ON photos(sha256)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_phash ON photos(phash)")
@@ -305,6 +376,8 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_exif_datetime ON photos(exif_datetime)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_folder_tag ON photos(folder_tag)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_camera_model ON photos(camera_model)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_aspect_ratio ON photos(aspect_ratio)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_format_family ON photos(format_family)")
     conn.commit()
     return conn
 
@@ -346,12 +419,17 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
             camera_make = ""
             camera_model = ""
             has_exif_val = 0
+            subsec_time = ""
+            aspect_ratio = ""
+            format_family = get_format_family(ext)
 
             if ext in IMAGE_EXTS:
                 media_type = "image"
                 exif_dt = get_exif_datetime(full_path)
+                subsec_time = get_subsec_time(full_path)
                 width, height = get_image_size(full_path)
                 phash = compute_phash(full_path)
+                aspect_ratio = compute_aspect_ratio(width, height)
                 gps_lat, gps_lon = get_gps_coords(full_path)
                 camera_make, camera_model = get_camera_info(full_path)
                 has_exif_val = 1 if has_exif_data(full_path) else 0
@@ -381,6 +459,9 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
                 "folder_tag": folder_tag,
                 "scan_root": input_dir,
                 "scanned_at": scan_time,
+                "aspect_ratio": aspect_ratio,
+                "subsec_time": subsec_time,
+                "format_family": format_family,
             })
 
     if use_db:
@@ -405,6 +486,11 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
         print(f"  Total: {total} files")
         for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
             print(f"  {cat}: {count}")
+        if not HEIC_SUPPORT:
+            heic_count = sum(1 for e in entries if e["extension"] in ("heic", "heif"))
+            if heic_count > 0:
+                print(f"  ⚠️  {heic_count} HEIC/HEIF files found — install pillow-heif for full support:")
+                print(f"      pip install pillow-heif")
         conn.close()
     else:
         # Write to CSV (fallback)
