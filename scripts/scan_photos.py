@@ -87,29 +87,60 @@ SKIP_DIR_SUFFIXES = {
 # NOTE: "IMG_" is NOT listed here — iOS camera photos also use IMG_ prefix (JPG).
 # iOS screenshots are IMG_*.PNG (uppercase), handled separately in detect_category().
 SCREENSHOT_PATTERNS = [
+    # English
     "screenshot", "screen shot",
-    "截图", "截屏",
+    # Chinese (Simplified & Traditional)
+    "截图", "截屏", "螢幕截圖", "截圖",
+    # Japanese
     "スクリーンショット",
+    # Korean
     "스크린샷",
+    # Russian
     "скриншот",
+    # French
+    "capture d", "copie d",
+    # German
+    "bildschirmfoto", "bildschirmaufnahme",
+    # Spanish
+    "captura de pantalla",
+    # Italian
+    "schermata",
+    # Portuguese
+    "captura de tela",
+    # Dutch
+    "schermafbeelding",
+    # Thai
+    "ภาพหน้าจอ",
+    # Vietnamese
+    "chụp màn hình",
+    # Indonesian
+    "tangkapan layar",
 ]
 
 # iOS screenshot: IMG_ followed by digits, saved as PNG (not JPG).
 # Camera photos are also IMG_ but always JPG.
 IOS_SCREENSHOT_RE = __import__("re").compile(r"^IMG_\d+\.PNG$", __import__("re").IGNORECASE)
 
-# WeChat image patterns
+# WeChat / messaging app image patterns (multilingual)
 WECHAT_PATTERNS = [
     "mmexport", "wx_camera_", "wx_",
     "microMsg", "WeiXin",
     "微信", "wechat",
+    # Korean KakaoTalk
+    "KakaoTalk",
+    # Japanese LINE
+    "LINE_",
 ]
 
-# Burst/HDR indicators in filenames
+# Burst/HDR indicators in filenames (multilingual)
 BURST_PATTERNS = [
     "_HDR", "_burst", "_Burst",
     "HDR_", "burst_",
-    "连拍",
+    "连拍", "連拍",
+    # Korean
+    "버스트", "연속",
+    # Japanese
+    "連写", "バースト",
 ]
 
 

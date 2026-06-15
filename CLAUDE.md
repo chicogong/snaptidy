@@ -9,8 +9,12 @@ This project is an AI skill for organizing photos/videos on macOS.
 - Scripts use argparse with `--input`, `--output` style flags
 - Full Disk Access must be enabled for the terminal
 - For Photos.app libraries, use `scan_photos_library.py` (not `scan_photos.py`)
+- Always confirm before applying moves: Fast path (1-9) or Safe path (10+)
+- Always inform user about `--undo` after applying moves
 
 ## Running the Pipeline
+
+### Option A: Step-by-step (full control)
 
 ```bash
 # 1a. Scan file-system folders
@@ -30,7 +34,12 @@ python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./simil
 # python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv --detect-cross-format
 # python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv --detect-bursts
 
-# 4. Generate plan (with smart priorities)
+# 4. Preview with HTML thumbnails (optional but recommended)
+python3 scripts/generate_preview.py --duplicates ./similar.csv --index ./photo_index.db --output ./preview.html
+# With move plan overlay:
+# python3 scripts/generate_preview.py --duplicates ./similar.csv --index ./photo_index.db --plan ./plan.csv --output ./preview.html
+
+# 5. Generate plan (with smart priorities)
 python3 scripts/generate_move_plan.py \
     --duplicates ./dupes.csv \
     --index ./photo_index.db \
@@ -38,10 +47,34 @@ python3 scripts/generate_move_plan.py \
     --target-root /path/to/photos \
     --prefer-folder "DCIM" --strategy quality
 
-# 5. Apply (only after user review!)
+# 6. Apply (only after user review!)
 python3 scripts/apply_move_plan.py --plan ./plan.csv --mode trash
 # Or for Photos.app managed files:
 # python3 scripts/apply_move_plan.py --plan ./plan.csv --mode photos-trash
+
+# 7. Undo if needed
+python3 scripts/apply_move_plan.py --plan ./plan.csv --undo
+```
+
+### Option B: One-command interactive workflow
+
+```bash
+# Interactive — asks preferences step by step
+python3 scripts/organize_photos.py --source ~/Pictures/Export --interactive
+
+# Non-interactive with dry-run
+python3 scripts/organize_photos.py \
+    --source ~/Pictures/Export \
+    --dedup-method all \
+    --strategy quality \
+    --trash-mode trash \
+    --dry-run
+
+# Detect external drives and Android devices
+python3 scripts/organize_photos.py --source /any --detect-sources
+
+# Check iCloud download status
+python3 scripts/organize_photos.py --source ~/Pictures/Export --check-icloud
 ```
 
 ## Key Flags
@@ -57,7 +90,13 @@ python3 scripts/apply_move_plan.py --plan ./plan.csv --mode trash
 | `--strategy quality\|oldest\|newest\|folder` | Priority strategy for keeping duplicates |
 | `--prefer-folder "DCIM"` | Extra bonus for specified folder tags |
 | `--mode move\|trash\|photos-trash` | Move to review folder / macOS Trash / Photos.app delete |
-| `--trash` | Shortcut: generate plan with Trash targets |
+| `--undo` | Undo the most recent move operation |
+| `--interactive` | Run organize_photos.py with step-by-step prompts |
+| `--dry-run` | Preview only — scan, detect, plan, but don't apply moves |
+| `--check-icloud` | Check iCloud download status of photos |
+| `--detect-sources` | Detect Android devices and external drives with photos |
+| `--dedup-method` | Choose detection method: exact/phash/scaled/cross-format/burst/all |
+| `--trash-mode` | Choose action: move/trash/photos-trash |
 
 ## Dependencies
 

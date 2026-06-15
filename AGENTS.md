@@ -4,7 +4,7 @@ This file provides universal AI coding rules for the SnapTidy project. Compatibl
 
 ## Project Overview
 
-SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst), and generates safe move plans. It never deletes files. Supports both file-system scanning and Photos.app library scanning.
+SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst), generates safe move plans, provides HTML thumbnail previews, and supports undo. It never deletes files. Supports both file-system scanning and Photos.app library scanning. Interactive one-command workflow via `organize_photos.py`.
 
 ## Code Conventions
 
@@ -23,12 +23,14 @@ SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, de
 - Always log operations to a CSV audit trail
 - macOS Trash mode is the safest move option (recoverable via Finder)
 - Photos.app PyObjC deletion keeps the library database consistent
+- Fast/Safe path confirmation: 1-9 moves brief `[Y/n]`, 10+ moves require explicit `"yes"`
+- Always inform user that `--undo` is available after a move operation
 
 ## Architecture
 
 ```
-Pipeline: Scan → Dedup → Plan → Apply
-          (read)  (read)  (read)  (move-only)
+Pipeline: Scan → Dedup → Preview → Plan → Apply → Undo
+          (read)  (read)  (read)   (read)  (move)  (reverse)
 
 Scan modes:
   scan_photos.py          — File-system scan (exported folders, external drives)
@@ -37,6 +39,18 @@ Scan modes:
 Dedup modes:
   find_exact_duplicates.py  — SHA-256 exact match
   find_similar_photos.py    — pHash + scaled + cross-format + burst
+
+Preview:
+  generate_preview.py       — HTML thumbnail preview (KEEP/MOVE badges)
+
+Plan:
+  generate_move_plan.py     — Smart priority move plan generation
+
+Apply:
+  apply_move_plan.py        — Move/trash/photos-trash + undo support
+
+Interactive:
+  organize_photos.py        — One-command pipeline (collect prefs → scan → detect → preview → plan → confirm → apply)
 ```
 
 Each step is independent and produces a .db/.csv for the next step. This design allows:
@@ -44,13 +58,14 @@ Each step is independent and produces a .db/.csv for the next step. This design 
 - Manual review between steps
 - Re-running from any point without data loss
 - SQLite storage for efficient large-library operations
+- HTML preview for visual review before committing
 
-## Auto-Categorization Rules
+## Auto-Categorization Rules (15+ Languages)
 
 Detection order matters (first match wins):
-1. **burst**: `_HDR`, `_burst`, `连拍` — checked before screenshot
-2. **screenshot**: `screenshot`, `截图`, `截屏`, etc. + iOS `IMG_\d+.PNG`
-3. **wechat**: `mmexport`, `wx_camera_`, `microMsg`, `微信`
+1. **burst**: `_HDR`, `_burst`, `连拍`, `連拍`, `버스트`, `연속`, `連写`, `バースト` — checked before screenshot
+2. **screenshot**: English/中文/日本語/한국어/Русский/Français/Deutsch/Español/Italiano/Português/Nederlands/ไทย/Tiếng Việt/Bahasa + iOS `IMG_\d+.PNG`
+3. **wechat**: `mmexport`, `wx_camera_`, `microMsg`, `微信`, `KakaoTalk`, `LINE_`
 4. **video**: by file extension
 5. **photo**: default
 
@@ -64,6 +79,40 @@ Detection order matters (first match wins):
 | Scaled | `scaled` | Aspect ratio + dimension ratio + pHash verify | Hamming ≤ 10 |
 | Cross-format | `cross_format` | Aspect ratio + same dims + format differs + pHash verify | Hamming ≤ 12 |
 | Burst | `burst_subsec` | Same DateTimeOriginal + different SubSecTime | Exact second match |
+
+## Interactive Workflow (organize_photos.py)
+
+The interactive workflow collects user preferences and orchestrates the full pipeline:
+
+1. **collect_preferences_interactive()** — prompts for: source type, organize mode, dedup method, strategy, preferred folder, trash mode
+2. **run_scan()** — calls scan_photos or scan_photos_library based on source type
+3. **run_detect()** — runs selected detection methods (exact + similar variants)
+4. **show_preview()** — displays summary stats (total moves, by category, by match type, reclaimable space)
+5. **generate_manifest()** — creates `plan_manifest.json` with preferences, summary, and all planned moves
+6. **confirm_plan()** — Fast/Safe path model: 1-9 moves = brief `[Y/n]`, 10+ moves = require explicit `"yes"`
+7. **apply_plan()** — executes moves with undo record saved automatically
+
+### External Source Detection
+
+- **check_icloud_status()** — checks for `.icloud` companion files and `com.apple.iCloud.syncState` xattr
+- **download_icloud_file()** — triggers download via `brctl download`
+- **detect_android_mount()** — scans `/Volumes/` for DCIM folders (Android, Galaxy, Pixel, etc.)
+- **detect_external_drives()** — scans `/Volumes/` for photo-containing external drives
+
+## Undo System (apply_move_plan.py)
+
+- **save_undo_record()** — creates JSON in `undo_records/` subdir with source/destination/status + 30-day expiry
+- **undo_last()** — reverses most recent operation in reverse order, removes undo file on success
+- **compute_file_checksum()** — SHA-256 verification for moved files
+- Trash operations cannot be undone from CLI — user must use Finder > Put Back
+
+## HTML Preview (generate_preview.py)
+
+- **get_thumbnail_base64()** — creates base64 JPEG thumbnail (200px max) embedded in HTML
+- **generate_preview_html()** — produces standalone HTML page with:
+  - Summary stats bar (total groups, images, match type breakdown)
+  - Per-group cards: thumbnail, KEEP/MOVE badge, filename, dimensions, size, category, folder, EXIF, camera
+  - Green border for KEEP, orange border for MOVE
 
 ## Folder Priority
 

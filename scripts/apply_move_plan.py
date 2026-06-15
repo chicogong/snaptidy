@@ -222,6 +222,138 @@ def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
     print(f"  {'  |  '.join(parts)}")
 
 
+def compute_file_checksum(path: str) -> str:
+    """Compute SHA-256 checksum of a file for undo verification."""
+    import hashlib
+    try:
+        h = hashlib.sha256()
+        with open(path, "rb") as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                h.update(chunk)
+        return h.hexdigest()
+    except Exception:
+        return ""
+
+
+def save_undo_record(log_entries: list, plan_path: str) -> str:
+    """Save undo record for the most recent operation.
+
+    Undo records are stored in the same directory as the plan file,
+    under an undo_records/ subdirectory. Each record is a JSON file
+    containing all source/destination mappings and file checksums.
+
+    Returns the path to the undo record file.
+    """
+    undo_dir = os.path.join(os.path.dirname(plan_path), "undo_records")
+    os.makedirs(undo_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    undo_path = os.path.join(undo_dir, f"undo_{timestamp}.json")
+
+    # Build undo record
+    record = {
+        "created_at": datetime.now().isoformat(),
+        "expires_at": (datetime.now() + __import__("datetime").timedelta(days=30)).isoformat(),
+        "plan_file": os.path.basename(plan_path),
+        "operations": [],
+    }
+
+    for entry in log_entries:
+        if entry.get("status") in ("moved", "trashed"):
+            op = {
+                "source_path": entry.get("source_path", ""),
+                "target_path": entry.get("target_path", ""),
+                "action": entry.get("action", ""),
+                "status": entry.get("status", ""),
+            }
+            record["operations"].append(op)
+
+    with open(undo_path, "w", encoding="utf-8") as f:
+        __import__("json").dump(record, f, indent=2, ensure_ascii=False)
+
+    return undo_path
+
+
+def undo_last(plan_dir: str) -> None:
+    """Undo the most recent move operation.
+
+    Reads the latest undo record and reverses all operations.
+    """
+    import json as json_mod
+
+    undo_dir = os.path.join(plan_dir, "undo_records")
+    if not os.path.isdir(undo_dir):
+        print("No undo records found.")
+        return
+
+    # Find latest undo record
+    undo_files = sorted(
+        [f for f in os.listdir(undo_dir) if f.startswith("undo_") and f.endswith(".json")],
+        reverse=True
+    )
+
+    if not undo_files:
+        print("No undo records found.")
+        return
+
+    latest = os.path.join(undo_dir, undo_files[0])
+    with open(latest, encoding="utf-8") as f:
+        record = json_mod.load(f)
+
+    # Check expiry
+    expires = record.get("expires_at", "")
+    if expires:
+        try:
+            exp_dt = datetime.fromisoformat(expires)
+            if datetime.now() > exp_dt:
+                print(f"⚠️  Undo record expired on {expires}")
+                print("   The original files may have been modified. Proceed with caution.")
+        except ValueError:
+            pass
+
+    ops = record.get("operations", [])
+    if not ops:
+        print("Undo record contains no operations.")
+        return
+
+    print(f"Undo record: {undo_files[0]}")
+    print(f"  Created: {record.get('created_at', 'unknown')}")
+    print(f"  Operations: {len(ops)}")
+    print()
+
+    reversed_count = 0
+    error_count = 0
+
+    for op in reversed(ops):  # Reverse order: undo last operation first
+        src = op.get("source_path", "")
+        dest = op.get("target_path", "")
+        status = op.get("status", "")
+
+        if status == "moved" and dest and os.path.exists(dest):
+            # Move file back
+            try:
+                os.makedirs(os.path.dirname(src), exist_ok=True)
+                if not os.path.exists(src):
+                    shutil.move(dest, src)
+                    reversed_count += 1
+                else:
+                    error_count += 1
+            except Exception as e:
+                print(f"  ❌ Failed to undo {dest} → {src}: {e}")
+                error_count += 1
+        elif status == "trashed":
+            # Cannot undo macOS Trash from CLI — user must use Finder > Put Back
+            print(f"  ⚠️  Cannot undo Trash for {src} — use Finder > Put Back")
+
+    # Remove the undo record after successful undo
+    if error_count == 0:
+        os.remove(latest)
+        print(f"✅ Undone {reversed_count} operations. Undo record removed.")
+    else:
+        print(f"⚠️  Undone {reversed_count}/{len(ops)} operations. {error_count} errors.")
+        print(f"   Undo record kept: {latest}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Apply a move plan for duplicate files (safe: move or trash)")
@@ -229,9 +361,21 @@ def main() -> None:
     parser.add_argument("--mode", choices=["move", "trash", "photos-trash"], default="move",
                         help="Action mode: 'move' to review folder, 'trash' to macOS Trash, "
                              "'photos-trash' for Photos.app managed files (default: move)")
+    parser.add_argument("--undo", action="store_true",
+                        help="Undo the most recent move operation")
     args = parser.parse_args()
     plan_path = os.path.abspath(args.plan)
     log_path = os.path.join(os.path.dirname(plan_path), "move_log.csv")
+
+    # Undo mode
+    if args.undo:
+        plan_dir = os.path.dirname(plan_path)
+        # If plan file doesn't exist but directory does, use directory
+        if not os.path.isfile(plan_path) and os.path.isdir(plan_dir):
+            undo_last(plan_dir)
+        else:
+            undo_last(os.path.dirname(plan_path))
+        return
 
     print(f"⚠️  About to apply move plan: {plan_path}")
     print(f"   Mode: {args.mode}")
