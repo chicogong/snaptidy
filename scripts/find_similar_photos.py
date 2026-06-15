@@ -239,17 +239,27 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
         if len(bucket_entries) < 2:
             continue
 
+        # Sort by pixel count (area) for efficient range scanning
+        bucket_entries.sort(key=lambda e: e["width"] * e["height"])
+
         for i in range(len(bucket_entries)):
             e1 = bucket_entries[i]
             if e1["path"] in visited:
                 continue
             hash1 = imagehash.hex_to_hash(e1["phash"])
             group_members = [e1]
+            area1 = e1["width"] * e1["height"]
 
             for j in range(i + 1, len(bucket_entries)):
                 e2 = bucket_entries[j]
                 if e2["path"] in visited:
                     continue
+
+                area2 = e2["width"] * e2["height"]
+                # Early exit: if the larger image is >4x the smaller, skip
+                # (scaled detection only checks 1x,2x,3x,4x ratios)
+                if area2 > area1 * 16:
+                    break
 
                 # Check aspect ratio similarity
                 if not _aspect_ratios_similar(e1["aspect_ratio"], e2["aspect_ratio"]):
@@ -391,10 +401,16 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
             continue
 
         # Compare across format families
+        # Optimization: index by (w, h) for O(1) dimension lookup
         for fi in range(len(format_families)):
             for fj in range(fi + 1, len(format_families)):
                 fam_i = format_families[fi]
                 fam_j = format_families[fj]
+
+                # Build dimension index for fam_j: (w, h) → [entries]
+                dim_index_j = defaultdict(list)
+                for e2 in by_format[fam_j]:
+                    dim_index_j[(e2["width"], e2["height"])].append(e2)
 
                 for e1 in by_format[fam_i]:
                     if e1["path"] in visited:
@@ -402,26 +418,24 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
                     hash1 = imagehash.hex_to_hash(e1["phash"])
                     group_members = [e1]
 
-                    for e2 in by_format[fam_j]:
-                        if e2["path"] in visited:
-                            continue
+                    # Only check entries in fam_j with matching dimensions
+                    dim_tolerance = max(2, round(e1["width"] * 0.005))
+                    for dw in range(-dim_tolerance, dim_tolerance + 1):
+                        for dh in range(-dim_tolerance, dim_tolerance + 1):
+                            key = (e1["width"] + dw, e1["height"] + dh)
+                            for e2 in dim_index_j.get(key, []):
+                                if e2["path"] in visited:
+                                    continue
 
-                        # Check aspect ratio similarity
-                        if not _aspect_ratios_similar(e1["aspect_ratio"], e2["aspect_ratio"]):
-                            continue
+                                # Check aspect ratio similarity
+                                if not _aspect_ratios_similar(e1["aspect_ratio"], e2["aspect_ratio"]):
+                                    continue
 
-                        # Check dimensions: must be very close (within 2px per dimension)
-                        # Format conversion may add/remove 1 pixel due to chroma subsampling
-                        dim_tolerance = max(2, round(max(e1["width"], e2["width"]) * 0.005))
-                        if (abs(e1["width"] - e2["width"]) > dim_tolerance or
-                                abs(e1["height"] - e2["height"]) > dim_tolerance):
-                            continue
-
-                        # Verify with pHash (higher threshold for cross-format)
-                        hash2 = imagehash.hex_to_hash(e2["phash"])
-                        if hash1 - hash2 <= phash_threshold:
-                            group_members.append(e2)
-                            visited.add(e2["path"])
+                                # Verify with pHash (higher threshold for cross-format)
+                                hash2 = imagehash.hex_to_hash(e2["phash"])
+                                if hash1 - hash2 <= phash_threshold:
+                                    group_members.append(e2)
+                                    visited.add(e2["path"])
 
                     if len(group_members) > 1:
                         group_id += 1

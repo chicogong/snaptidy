@@ -27,6 +27,13 @@ def get_thumbnail_base64(path: str, max_size: int = 200) -> str:
         from PIL import Image
         import io
 
+        # Register HEIF opener if available
+        try:
+            from pillow_heif import register_heif_opener
+            register_heif_opener()
+        except ImportError:
+            pass
+
         with Image.open(path) as img:
             # Convert HEIC/RGBA to RGB
             if img.mode in ("RGBA", "P", "LA"):
@@ -188,11 +195,9 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
             status_label = "MOVE" if is_moved else "KEEP"
 
             # Thumbnail
-            thumb_b64 = get_thumbnail_base64(path) if ext in ("jpg", "jpeg", "png", "bmp", "gif", "webp") else ""
+            thumb_b64 = get_thumbnail_base64(path)
             if thumb_b64:
                 thumb_html = f'<img class="thumbnail" src="data:image/jpeg;base64,{thumb_b64}" alt="{fname}">'
-            elif ext in ("heic", "heif"):
-                thumb_html = '<div class="no-thumb">HEIC (install pillow-heif)</div>'
             elif ext in ("mov", "mp4", "m4v"):
                 thumb_html = '<div class="no-thumb">Video</div>'
             else:

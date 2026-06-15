@@ -1,8 +1,8 @@
 name: snaptidy
-version: 3.1.0
+version: 3.2.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst detection. Scan file folders or Photos.app library directly. Interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, 15+ language auto-categorization, smart priority rules, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst detection. Scan file folders or Photos.app library directly. Organize by date/category, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, 15+ language auto-categorization, smart priority rules, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date"
 author: chicogong
 homepage: https://github.com/chicogong/snaptidy
 repository: https://github.com/chicogong/snaptidy
@@ -38,6 +38,8 @@ tags:
   - icloud
   - android
   - multilingual
+  - by-date
+  - by-category
 categories:
   - productivity
   - media

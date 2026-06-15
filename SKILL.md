@@ -1,10 +1,10 @@
 ---
 name: snaptidy
-version: 3.1.0
+version: 3.2.0
 description: |
-  AI-powered photo & video organizer for macOS. Scan libraries, detect duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format), generate safe move plans, preview with HTML thumbnails, and undo if needed — without ever deleting your originals.
+  AI-powered photo & video organizer for macOS. Scan libraries, detect duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format), organize by date/category, preview with HTML thumbnails, and undo if needed — without ever deleting your originals.
   Use this skill when you need to: scan and tidy large photo/video folders, find duplicate photos, deduplicate archives, organize a messy photo library, generate a dedup report for human review, preview duplicates before acting, or undo a move operation.
-  照片视频整理去重工具，支持SHA-256精确去重、pHash感知哈希、缩放去重、跨格式去重（HEIC↔JPEG）、连拍检测，HTML缩略图预览，一键撤销操作，iCloud状态检测，Android/外置硬盘扫描，交互式整理流程，15+语言识别，智能优先级规则，Photos.app数据库直读，PyObjC安全删除，SQLite存储10万+照片。
+  照片视频整理去重工具，支持SHA-256精确去重、pHash感知哈希、缩放去重、跨格式去重（HEIC↔JPEG）、连拍检测，按日期/分类整理，HTML缩略图预览，一键撤销操作，iCloud状态检测，Android/外置硬盘扫描，交互式整理流程，15+语言识别，智能优先级规则，Photos.app数据库直读，PyObjC安全删除，SQLite存储10万+照片。
   Trigger phrases: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "scan for duplicates", "整理照片", "去重", "整理相册", "重複写真削除", "写真整理", "사진 정리", "중복 사진", "organiser mes photos", "Fotos organisieren", "organizar fotos", "정리 사진"
 author: chicogong
 license: MIT
@@ -99,6 +99,12 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --interactive
 
 # Non-interactive with dry-run (preview only)
 python3 scripts/organize_photos.py --source ~/Pictures/Export --dry-run --detect-all
+
+# Organize by date into YYYY/MM folders
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-date --dry-run
+
+# Organize by category (photos, screenshots, WeChat, bursts, videos)
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category --dry-run
 
 # Detect external drives and Android devices
 python3 scripts/organize_photos.py --source /any --detect-sources
@@ -350,6 +356,20 @@ Algorithm:
 - **SQLite** (.db) — Recommended. Handles 100k+ photos efficiently. Query speed 400x faster than CSV for large libraries. Data stays local, no context bloat.
 - **CSV** (.csv) — Fallback for small libraries. Compatible with Excel/Numbers.
 - **HTML Preview** — Standalone HTML file with embedded thumbnails. Open in any browser.
+
+### Benchmarks (MacBook Pro M3 Pro)
+
+| Photos | Scan | Exact | Similar (all) | Plan | Total |
+|--------|------|-------|---------------|------|-------|
+| 1K | 1.3s | 0.06s | 1.2s | 0.1s | ~3s |
+| 10K | 12s | 0.07s | 49s | 0.3s | ~66s |
+| 50K | 58s | 0.13s | ~8min | 0.5s | ~10min |
+
+**Performance tips for 10K+ libraries:**
+- Run `--detect-scaled` and `--detect-cross-format` separately instead of `--detect-all`
+- Scan uses progress indicators (5% intervals) for large libraries
+- pHash and exact detection are fast regardless of library size (indexed SQLite queries)
+- Scaled detection is the bottleneck for 50K+ — consider running it overnight
 
 ## Supported Formats
 

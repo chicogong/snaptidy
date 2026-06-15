@@ -263,6 +263,160 @@ def run_plan(prefs: dict, duplicates_csv: str, index_db: str, plan_csv: str, tar
     return len(plan)
 
 
+def generate_by_date_plan(index_db: str, plan_csv: str, target_root: str, date_format: str = "YYYY/MM") -> int:
+    """Generate a move plan that organizes photos into date-based folders.
+
+    Uses EXIF DateTimeOriginal first, falls back to file mtime.
+
+    date_format options:
+      - "YYYY/MM" — e.g., 2024/06 (default)
+      - "YYYY-MM" — e.g., 2024-06
+      - "YYYY"    — e.g., 2024
+      - "YYYY/MM/DD" — e.g., 2024/06/15
+
+    Returns number of planned moves.
+    """
+    import csv
+    from datetime import datetime as dt
+
+    conn = sqlite3.connect(index_db)
+    conn.row_factory = sqlite3.Row
+
+    plan = []
+    skipped = 0
+
+    cursor = conn.execute("SELECT file_path, exif_datetime, file_mtime, category FROM photos")
+    for row in cursor:
+        src = row["file_path"]
+        date_str = row["exif_datetime"] or row["file_mtime"] or ""
+
+        if not date_str:
+            skipped += 1
+            continue
+
+        # Parse date
+        try:
+            # Try ISO format first
+            if "T" in date_str:
+                parsed = dt.fromisoformat(date_str.replace("Z", "+00:00"))
+            else:
+                # Try common formats
+                for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y/%m/%d %H:%M:%S"):
+                    try:
+                        parsed = dt.strptime(date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                else:
+                    skipped += 1
+                    continue
+        except (ValueError, TypeError):
+            skipped += 1
+            continue
+
+        # Build target folder path
+        if date_format == "YYYY/MM":
+            folder = f"{parsed.year:04d}/{parsed.month:02d}"
+        elif date_format == "YYYY-MM":
+            folder = f"{parsed.year:04d}-{parsed.month:02d}"
+        elif date_format == "YYYY":
+            folder = f"{parsed.year:04d}"
+        elif date_format == "YYYY/MM/DD":
+            folder = f"{parsed.year:04d}/{parsed.month:02d}/{parsed.day:02d}"
+        else:
+            folder = f"{parsed.year:04d}/{parsed.month:02d}"
+
+        # Build target path
+        filename = os.path.basename(src)
+        target_path = os.path.join(target_root, folder, filename)
+
+        # Skip if already in the correct folder
+        src_dir = os.path.dirname(src)
+        expected_dir = os.path.join(target_root, folder)
+        if os.path.normpath(src_dir) == os.path.normpath(expected_dir):
+            continue
+
+        plan.append({
+            "action": "move",
+            "source_path": src,
+            "target_path": target_path,
+            "reason": f"organize by date: {folder}",
+        })
+
+    conn.close()
+
+    # Write plan
+    with open(plan_csv, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=["action", "source_path", "target_path", "reason"])
+        writer.writeheader()
+        for entry in plan:
+            writer.writerow(entry)
+
+    if skipped:
+        print(f"  Skipped {skipped} files without valid date")
+
+    return len(plan)
+
+
+def generate_by_category_plan(index_db: str, plan_csv: str, target_root: str) -> int:
+    """Generate a move plan that organizes photos into category-based folders.
+
+    Folder structure: target_root/{category}/filename
+    e.g., target_root/screenshots/screenshot_20240615.png
+
+    Returns number of planned moves.
+    """
+    import csv
+
+    conn = sqlite3.connect(index_db)
+    conn.row_factory = sqlite3.Row
+
+    plan = []
+    skipped = 0
+
+    # Category → folder name mapping
+    CATEGORY_FOLDERS = {
+        "photo": "01_Photos",
+        "screenshot": "02_Screenshots",
+        "wechat": "03_WeChat",
+        "burst": "04_Burst",
+        "video": "05_Videos",
+    }
+
+    cursor = conn.execute("SELECT file_path, category FROM photos")
+    for row in cursor:
+        src = row["file_path"]
+        cat = row["category"] or "photo"
+
+        folder = CATEGORY_FOLDERS.get(cat, f"06_Other_{cat}")
+        filename = os.path.basename(src)
+        target_path = os.path.join(target_root, folder, filename)
+
+        # Skip if already in the correct folder
+        src_dir = os.path.dirname(src)
+        expected_dir = os.path.join(target_root, folder)
+        if os.path.normpath(src_dir) == os.path.normpath(expected_dir):
+            continue
+
+        plan.append({
+            "action": "move",
+            "source_path": src,
+            "target_path": target_path,
+            "reason": f"organize by category: {cat}",
+        })
+
+    conn.close()
+
+    # Write plan
+    with open(plan_csv, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=["action", "source_path", "target_path", "reason"])
+        writer.writeheader()
+        for entry in plan:
+            writer.writerow(entry)
+
+    return len(plan)
+
+
 def show_preview(index_db: str, plan_csv: str) -> dict:
     """Step 4: Show preview summary. Returns stats dict."""
     import csv
@@ -589,21 +743,63 @@ def main() -> None:
             print(f"     These files will be skipped during move operations.")
         conn.close()
 
-    # Step 2: Detect
-    print()
-    print("🔍 Step 2/5: Detecting duplicates...")
-    has_duplicates = run_detect(prefs, index_db, duplicates_csv)
+    # Step 2-5: Route by organize mode
+    mode = prefs.get("mode", "dedup")
 
-    if not has_duplicates:
+    if mode == "dedup":
+        # Dedup mode: detect duplicates → plan → confirm → apply
         print()
-        print("✅ No duplicates found! Your library is clean.")
+        print("🔍 Step 2/5: Detecting duplicates...")
+        has_duplicates = run_detect(prefs, index_db, duplicates_csv)
+
+        if not has_duplicates:
+            print()
+            print("✅ No duplicates found! Your library is clean.")
+            return
+
+        print()
+        print("📝 Step 3/5: Generating move plan...")
+        num_moves = run_plan(prefs, duplicates_csv, index_db, plan_csv, prefs["source_path"])
+        print(f"  Generated {num_moves} planned moves")
+
+    elif mode == "by-date":
+        # By-date mode: organize photos into date-based folders
+        print()
+        print("📅 Step 2/5: Organizing by date...")
+        num_moves = generate_by_date_plan(index_db, plan_csv, prefs["source_path"])
+        print(f"  Generated {num_moves} planned moves (into YYYY/MM folders)")
+
+    elif mode == "by-category":
+        # By-category mode: organize photos by category
+        print()
+        print("🏷️  Step 2/5: Organizing by category...")
+        num_moves = generate_by_category_plan(index_db, plan_csv, prefs["source_path"])
+        print(f"  Generated {num_moves} planned moves (by category)")
+
+    elif mode == "by-location":
+        # By-location mode: organize by GPS location
+        print()
+        print("📍 Step 2/5: Organizing by location...")
+        conn = sqlite3.connect(index_db)
+        cursor = conn.execute("SELECT COUNT(*) FROM photos WHERE gps_latitude IS NOT NULL AND gps_latitude != ''")
+        has_gps = cursor.fetchone()[0]
+        conn.close()
+        if has_gps == 0:
+            print("  ⚠️  No GPS data found in photos. Cannot organize by location.")
+            print("     Try 'by-date' or 'by-category' mode instead.")
+            return
+        print("  GPS-based location organization is not yet fully implemented.")
+        print("  Photos with GPS data will be organized by city/region in a future version.")
         return
 
-    # Step 3: Generate plan
-    print()
-    print("📝 Step 3/5: Generating move plan...")
-    num_moves = run_plan(prefs, duplicates_csv, index_db, plan_csv, prefs["source_path"])
-    print(f"  Generated {num_moves} planned moves")
+    else:
+        print(f"  ⚠️  Unknown mode: {mode}")
+        return
+
+    if num_moves == 0:
+        print()
+        print("✅ No moves needed! Photos are already organized.")
+        return
 
     # Step 4: Preview & confirm
     print()

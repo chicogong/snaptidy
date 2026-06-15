@@ -75,6 +75,12 @@ python3 scripts/organize_photos.py --source /any --detect-sources
 
 # Check iCloud download status
 python3 scripts/organize_photos.py --source ~/Pictures/Export --check-icloud
+
+# Organize by date into YYYY/MM folders
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-date --dry-run
+
+# Organize by category (01_Photos, 02_Screenshots, 03_WeChat, etc.)
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category --dry-run
 ```
 
 ## Key Flags
@@ -97,6 +103,7 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --check-icloud
 | `--detect-sources` | Detect Android devices and external drives with photos |
 | `--dedup-method` | Choose detection method: exact/phash/scaled/cross-format/burst/all |
 | `--trash-mode` | Choose action: move/trash/photos-trash |
+| `--mode dedup\|by-date\|by-category\|by-location` | Organize mode: dedup (default), by-date (YYYY/MM), by-category, by-location |
 
 ## Dependencies
 
