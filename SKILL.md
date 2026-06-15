@@ -4,7 +4,7 @@ version: 1.0.0
 description: |
   AI-powered photo & video organizer for macOS. Scan libraries, detect duplicates (SHA-256 exact + pHash perceptual), and generate safe move plans — without ever deleting your originals.
   Use this skill when you need to: scan and tidy large photo/video folders, find duplicate photos, deduplicate archives, organize a messy photo library, or generate a dedup report for human review.
-  Trigger phrases: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "scan for duplicates"
+  Trigger phrases: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "scan for duplicates", "整理照片", "去重", "整理相册", "重複写真削除", "写真整理", "사진 정리", "중복 사진"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -33,6 +33,9 @@ Invoke this skill when the user asks to:
 - Scan a photo library for duplicates
 - Generate a dedup report or move plan
 - Prepare a clean photo archive
+- 整理照片、去重、清理相册
+- 重複写真を削除・整理する
+- 사진 정리, 중복 사진 찾기
 
 ## Safety Rules (MANDATORY)
 

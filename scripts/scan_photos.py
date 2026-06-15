@@ -143,7 +143,11 @@ def scan_directory(input_dir: str, output_csv: str) -> None:
             else:
                 media_type = "video"
             is_screenshot = (
-                "screenshot" in name.lower() or "截图" in name.lower() or "截屏" in name.lower()
+                "screenshot" in name.lower()
+                or "截图" in name or "截屏" in name
+                or "スクリーンショット" in name
+                or "스크린샷" in name
+                or "скриншот" in name.lower()
             )
             entries.append({
                 "file_path": full_path,
@@ -165,7 +169,7 @@ def scan_directory(input_dir: str, output_csv: str) -> None:
         "exif_datetime", "file_mtime", "width", "height", "phash",
         "media_type", "is_screenshot",
     ]
-    with open(output_csv, "w", newline="") as f:
+    with open(output_csv, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for row in entries:

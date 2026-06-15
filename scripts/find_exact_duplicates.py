@@ -35,7 +35,7 @@ def find_duplicates(index_path: str) -> list:
 
 def write_duplicates(dups: list, output_path: str) -> None:
     fieldnames = ["group_id", "sha256", "file_path"]
-    with open(output_path, "w", newline="") as f:
+    with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for entry in dups:

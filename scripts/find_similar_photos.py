@@ -34,7 +34,7 @@ def group_by_phash(index_path: str):
 
 def write_csv(entries, output_path):
     fieldnames = ["group_id", "phash", "file_path"]
-    with open(output_path, "w", newline="") as f:
+    with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for entry in entries:

@@ -52,7 +52,7 @@ def generate_plan(groups: dict, target_root: str) -> list:
 
 def write_plan(plan, plan_path: str) -> None:
     fieldnames = ["action", "source_path", "target_path", "reason"]
-    with open(plan_path, "w", newline="") as f:
+    with open(plan_path, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         for entry in plan:

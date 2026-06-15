@@ -6,6 +6,8 @@
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg)](https://github.com/topics/ai-skill)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
+>
+> 🇨🇳 整理照片去重 · 🇯🇵 重複写真整理 · 🇰🇷 중복 사진 정리 · 🇷🇺 Удаление дубликатов
 
 ## Why SnapTidy?
 
@@ -188,6 +190,20 @@ python3 scripts/apply_move_plan.py --plan ./move_plan.csv
 | **imagehash** | Perceptual hash computation (average hash) |
 
 Only 3 dependencies. No heavy frameworks.
+
+## Language Support
+
+SnapTidy handles filenames and paths in **CJK languages** (Chinese, Japanese, Korean) and other Unicode scripts natively. All CSV output uses UTF-8 with BOM for proper display in Excel and Numbers.
+
+Screenshot detection works across languages:
+
+| Language | Detected patterns |
+|----------|-------------------|
+| English | `screenshot`, `screen shot` |
+| Chinese | `截图`, `截屏` |
+| Japanese | `スクリーンショット` |
+| Korean | `스크린샷` |
+| Russian | `скриншот` |
 
 ## Platform Compatibility
 

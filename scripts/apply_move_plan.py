@@ -53,7 +53,7 @@ def apply_plan(plan_path: str, log_path: str):
                 "message": msg,
             })
     # Write log
-    with open(log_path, "w", newline="") as lf:
+    with open(log_path, "w", newline="", encoding="utf-8-sig") as lf:
         fieldnames = ["timestamp", "action", "source_path", "target_path", "reason", "status", "message"]
         writer = csv.DictWriter(lf, fieldnames=fieldnames)
         writer.writeheader()
