@@ -4,6 +4,7 @@ version: 2.0.0
 description: |
   AI-powered photo & video organizer for macOS. Scan libraries, detect duplicates (SHA-256 exact + pHash perceptual), and generate safe move plans — without ever deleting your originals.
   Use this skill when you need to: scan and tidy large photo/video folders, find duplicate photos, deduplicate archives, organize a messy photo library, or generate a dedup report for human review.
+  照片视频整理去重工具，支持SHA-256精确去重和pHash感知哈希，智能优先级规则，macOS回收站模式，微信/截图自动分类，SQLite存储10万+照片。
   Trigger phrases: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "scan for duplicates", "整理照片", "去重", "整理相册", "重複写真削除", "写真整理", "사진 정리", "중복 사진"
 author: chicogong
 license: MIT

@@ -293,7 +293,23 @@ def main() -> None:
     os.makedirs(os.path.dirname(os.path.abspath(args.plan)), exist_ok=True)
     write_plan(plan, os.path.abspath(args.plan))
 
+    # Space savings estimate
+    total_reclaimable = 0
+    for entry in plan:
+        meta = metadata.get(entry["source_path"], {})
+        try:
+            total_reclaimable += int(meta.get("size_bytes") or 0)
+        except (ValueError, TypeError):
+            pass
+
     print(f"Generated move plan with {len(plan)} actions.")
+    if total_reclaimable > 0:
+        if total_reclaimable >= 1_073_741_824:
+            print(f"  Reclaimable space: {total_reclaimable / 1_073_741_824:.1f} GB")
+        elif total_reclaimable >= 1_048_576:
+            print(f"  Reclaimable space: {total_reclaimable / 1_048_576:.1f} MB")
+        else:
+            print(f"  Reclaimable space: {total_reclaimable / 1_024:.1f} KB")
     if args.strategy != "quality":
         print(f"  Strategy: {args.strategy}")
     if args.prefer_folder:
