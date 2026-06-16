@@ -1,9 +1,9 @@
 ---
 name: snaptidy
-version: 3.5.0
+version: 3.6.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, create albums in Photos.app, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, create albums in Photos.app, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -26,7 +26,7 @@ metadata:
 
 ## When to Use
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**.
+Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**.
 
 **Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册
 
@@ -140,6 +140,37 @@ python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslib
 | `category` | `📸 Photos`, `📱 Screenshots` | Quick filtering |
 | `format` | `JPEG`, `HEIC` | Format management |
 | `smart` | `2026/📸 Photos` | Combined timeline + category |
+
+## HTML Report — Before/After Diff
+
+After `--mode photos-album` or `--mode dedup`, an HTML report is automatically generated with:
+
+- **Summary cards** — albums created, photos organized, errors
+- **Before → After diff** — new albums, changed albums (photo count delta), unchanged albums
+- **Library overview** — total photos, size, date range, format count
+- **Category & format distribution** — bar charts
+- **Album cards** — thumbnails, photo count, status badges (新建/已有/失败)
+
+Report is saved to `{output_dir}/reports/album_report.html` and auto-opened in browser.
+
+Works with `--dry-run` too — preview what *would* change before executing.
+
+## Output Directory Structure
+
+```
+snaptidy_output/          # Default output (--output-dir)
+├── scan/                 # Scan results
+│   ├── photo_index.db    # SQLite metadata index
+│   └── duplicates.csv    # Detected duplicate groups
+├── plans/                # Move plans & manifests
+│   ├── move_plan.csv     # Planned actions
+│   └── plan_manifest.json
+├── reports/              # HTML reports
+│   ├── album_report.html # Album organization report
+│   └── preview.html      # Duplicate thumbnail preview
+└── logs/                 # Execution logs
+    └── move_log.csv      # Applied move log
+```
 
 ## Photos.app "Recently Deleted" — Safe Cleanup
 

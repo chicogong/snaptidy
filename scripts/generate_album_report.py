@@ -98,6 +98,48 @@ def _get_album_emoji(album_name: str) -> str:
     return "📁"
 
 
+def _compute_album_diff(before: dict, after: dict) -> dict:
+    """Compute the diff between before/after album states.
+
+    Returns:
+        {
+            "new_albums": [(name, count), ...],
+            "updated_albums": [(name, before_count, after_count, delta), ...],
+            "unchanged_albums": [(name, count), ...],
+            "removed_albums": [(name, count), ...],  # unlikely but possible
+        }
+    """
+    new_albums = []
+    updated_albums = []
+    unchanged_albums = []
+    removed_albums = []
+
+    all_names = set(list(before.keys()) + list(after.keys()))
+    for name in sorted(all_names):
+        b = before.get(name, None)
+        a = after.get(name, None)
+        if b is None and a is not None:
+            new_albums.append((name, a))
+        elif b is not None and a is None:
+            removed_albums.append((name, b))
+        elif b is not None and a is not None:
+            delta = a - b
+            if delta > 0:
+                updated_albums.append((name, b, a, delta))
+            elif delta == 0:
+                unchanged_albums.append((name, a))
+            else:
+                # Photo count decreased (e.g. photos deleted)
+                updated_albums.append((name, b, a, delta))
+
+    return {
+        "new_albums": new_albums,
+        "updated_albums": updated_albums,
+        "unchanged_albums": unchanged_albums,
+        "removed_albums": removed_albums,
+    }
+
+
 def generate_album_report_html(
     index_db: str,
     organize_by: str,
@@ -268,6 +310,12 @@ def generate_album_report_html(
     photos_added = stats.get("photos_added", 0)
     errors = stats.get("errors", 0)
 
+    # Before/after diff
+    before_albums = stats.get("before_albums", {})
+    after_albums = stats.get("after_albums", {})
+    has_diff = bool(before_albums) and bool(after_albums)
+    diff = _compute_album_diff(before_albums, after_albums) if has_diff else None
+
     # Album details sorted
     sorted_details = sorted(album_details, key=lambda d: d.get("album", ""))
 
@@ -397,6 +445,36 @@ body {{
   padding-top: 16px; border-top: 1px solid #e8e8ed;
 }}
 
+/* Diff / Before-After */
+.diff-section {{
+  background: white; border-radius: 12px; padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06); margin-bottom: 24px;
+}}
+.diff-section h2 {{ font-size: 16px; font-weight: 600; margin-bottom: 12px; }}
+.diff-table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
+.diff-table th {{ text-align: left; padding: 8px 12px; background: #f5f5f7;
+  font-weight: 600; color: #48484a; border-bottom: 2px solid #e8e8ed; }}
+.diff-table td {{ padding: 8px 12px; border-bottom: 1px solid #f0f0f0; }}
+.diff-table tr:last-child td {{ border-bottom: none; }}
+.diff-table .album-col {{ font-weight: 500; }}
+.diff-table .num {{ text-align: right; font-variant-numeric: tabular-nums; }}
+.diff-plus {{ color: #34C759; font-weight: 600; }}
+.diff-minus {{ color: #FF3B30; font-weight: 600; }}
+.diff-zero {{ color: #86868b; }}
+.diff-badge {{
+  display: inline-block; padding: 2px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600; margin-left: 6px;
+}}
+.diff-badge.new {{ background: #E8F9ED; color: #34C759; }}
+.diff-badge.grew {{ background: #E8F0FE; color: #007AFF; }}
+.diff-badge.shrank {{ background: #FFF3E0; color: #FF9500; }}
+.diff-badge.same {{ background: #f5f5f7; color: #86868b; }}
+.diff-badge.removed {{ background: #FFE8ED; color: #FF3B30; }}
+.diff-summary-row {{
+  background: #fafafa; font-weight: 600;
+}}
+.diff-summary-row td {{ border-top: 2px solid #e8e8ed; }}
+
 /* Responsive */
 @media (max-width: 600px) {{
   .header {{ padding: 24px; }}
@@ -447,8 +525,100 @@ body {{
   </div>
   <div class="summary-card {'red' if errors > 0 else 'green'}">
     <div class="value">{errors}</div>
-    <div class="label">{'错误' if errors > 0 else '错误'}</div>
+    <div class="label">{'⚠️ 错误' if errors > 0 else '✅ 错误'}</div>
   </div>
+</div>
+""")
+
+    # Before/After Diff section
+    if diff:
+        new_count = len(diff["new_albums"])
+        grew_count = len(diff["updated_albums"])
+        same_count = len(diff["unchanged_albums"])
+        removed_count = len(diff["removed_albums"])
+        total_photos_before = sum(before_albums.values())
+        total_photos_after = sum(after_albums.values())
+
+        html_parts.append(f"""
+<div class="diff-section">
+  <h2>🔄 变更对比 · Before → After</h2>
+  <div class="summary" style="margin-bottom:16px">
+    <div class="summary-card green" style="padding:12px">
+      <div class="value" style="font-size:24px">{new_count}</div>
+      <div class="label">新建相册</div>
+    </div>
+    <div class="summary-card blue" style="padding:12px">
+      <div class="value" style="font-size:24px">{grew_count}</div>
+      <div class="label">照片增加</div>
+    </div>
+    <div class="summary-card orange" style="padding:12px">
+      <div class="value" style="font-size:24px">{same_count}</div>
+      <div class="label">未变化</div>
+    </div>
+    <div class="summary-card" style="padding:12px">
+      <div class="value" style="font-size:24px;color:#1d1d1f">{total_photos_before} → {total_photos_after}</div>
+      <div class="label">相册照片总数</div>
+    </div>
+  </div>
+  <table class="diff-table">
+    <tr>
+      <th>相册</th>
+      <th class="num">整理前</th>
+      <th class="num">整理后</th>
+      <th class="num">变化</th>
+      <th>状态</th>
+    </tr>
+""")
+
+        # New albums
+        for name, count in diff["new_albums"]:
+            html_parts.append(f"""    <tr>
+      <td class="album-col">{_get_album_emoji(name)} {html.escape(name)}</td>
+      <td class="num">—</td>
+      <td class="num">{count}</td>
+      <td class="num diff-plus">+{count}</td>
+      <td><span class="diff-badge new">新建</span></td>
+    </tr>
+""")
+
+        # Updated albums (grew)
+        for name, b, a, delta in diff["updated_albums"]:
+            if delta > 0:
+                badge = '<span class="diff-badge grew">增加</span>'
+                delta_html = f'<span class="diff-plus">+{delta}</span>'
+            else:
+                badge = '<span class="diff-badge shrank">减少</span>'
+                delta_html = f'<span class="diff-minus">{delta}</span>'
+            html_parts.append(f"""    <tr>
+      <td class="album-col">{_get_album_emoji(name)} {html.escape(name)}</td>
+      <td class="num">{b}</td>
+      <td class="num">{a}</td>
+      <td class="num">{delta_html}</td>
+      <td>{badge}</td>
+    </tr>
+""")
+
+        # Removed albums
+        for name, count in diff["removed_albums"]:
+            html_parts.append(f"""    <tr>
+      <td class="album-col">{_get_album_emoji(name)} {html.escape(name)}</td>
+      <td class="num">{count}</td>
+      <td class="num">—</td>
+      <td class="num diff-minus">-{count}</td>
+      <td><span class="diff-badge removed">已删除</span></td>
+    </tr>
+""")
+
+        # Unchanged albums (collapsed, show count only)
+        if same_count > 0:
+            html_parts.append(f"""    <tr class="diff-summary-row">
+      <td colspan="5" style="text-align:center;color:#86868b">
+        还有 {same_count} 个相册未变化（点击展开）
+      </td>
+    </tr>
+""")
+
+        html_parts.append("""  </table>
 </div>
 """)
 

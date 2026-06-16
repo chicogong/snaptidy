@@ -17,13 +17,46 @@ env/
 .Spotlight-V100
 .Trashes
 
-# Project-specific (generated output files)
-*.csv
-*.db
-photo_index.json
-move_plan_*.csv
-move_log.csv
+# -----------------------------------------------------------
+# SnapTidy generated output files
+# -----------------------------------------------------------
+
+# Default output directory (scan index, duplicates, plans, reports)
 snaptidy_output/
-undo_records/
+
+# SQLite databases (scan index, dedup cache)
+*.db
+
+# CSV data files (duplicates, move plans, logs)
+*.csv
+
+# HTML reports (album report, thumbnail preview)
+*.html
+
+# JSON manifests and checkpoints
+photo_index.json
 import_checkpoint.json
 import_report.json
+plan_manifest.json
+quick_*.json
+privacy_report.json
+
+# AppleScript fallback files
+*.applescript
+
+# Undo records
+undo_records/
+
+# Review folders (moved duplicates)
+review/
+
+# Test data generated artifacts (keep scripts, ignore outputs)
+test_data/*.db
+test_data/*.csv
+test_data/*.html
+test_data/*.json
+test_data/*.txt
+test_data/*.applescript
+test_data/undo_records/
+test_data/review/
+test_data/venv/

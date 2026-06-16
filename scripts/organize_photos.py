@@ -628,6 +628,15 @@ def organize_photos_albums(index_db: str, organize_by: str = "date",
     conn.row_factory = sqlite3.Row
     stats = {"albums_created": 0, "photos_added": 0, "errors": 0, "details": []}
 
+    # Step 0: Capture "before" state for diff report
+    before_albums = {}
+    if not dry_run:
+        try:
+            before_albums = _photos_list_existing_albums()
+        except Exception:
+            before_albums = {}
+    stats["before_albums"] = before_albums
+
     # Step 1: Group photos by the desired dimension
     # We need UUID (from filename) for AppleScript references
     groups = {}  # album_name -> [uuid, ...]
@@ -774,6 +783,14 @@ def organize_photos_albums(index_db: str, organize_by: str = "date",
             "errors": errors,
             "existed": album_existed,
         })
+
+    # Step 5: Capture "after" state for diff report
+    if not dry_run:
+        try:
+            after_albums = _photos_list_existing_albums()
+        except Exception:
+            after_albums = dict(before_albums)  # fallback
+        stats["after_albums"] = after_albums
 
     return stats
 
@@ -1196,13 +1213,22 @@ def main() -> None:
         prefs = collect_preferences_from_args(args)
         prefs["source_type"] = source_type
 
-    # Setup output directory
+    # Setup output directory structure
     output_dir = os.path.abspath(args.output_dir)
     os.makedirs(output_dir, exist_ok=True)
-    index_db = os.path.join(output_dir, "photo_index.db")
-    duplicates_csv = os.path.join(output_dir, "duplicates.csv")
-    plan_csv = os.path.join(output_dir, "move_plan.csv")
-    manifest_path = os.path.join(output_dir, "plan_manifest.json")
+
+    # Organized subdirectories for different output types
+    scan_dir = os.path.join(output_dir, "scan")
+    plan_dir = os.path.join(output_dir, "plans")
+    report_dir = os.path.join(output_dir, "reports")
+    log_dir = os.path.join(output_dir, "logs")
+    for d in [scan_dir, plan_dir, report_dir, log_dir]:
+        os.makedirs(d, exist_ok=True)
+
+    index_db = os.path.join(scan_dir, "photo_index.db")
+    duplicates_csv = os.path.join(scan_dir, "duplicates.csv")
+    plan_csv = os.path.join(plan_dir, "move_plan.csv")
+    manifest_path = os.path.join(plan_dir, "plan_manifest.json")
 
     # Step 1: Scan
     print()
@@ -1338,7 +1364,7 @@ def main() -> None:
                 print(f"   Errors: {album_stats['errors']}")
 
         # Generate HTML report
-        report_path = os.path.join(output_dir, "album_report.html")
+        report_path = os.path.join(report_dir, "album_report.html")
         try:
             from generate_album_report import generate_album_report_html
             report_html = generate_album_report_html(
@@ -1374,7 +1400,7 @@ def main() -> None:
     print(f"  Manifest saved to: {manifest_path}")
 
     # Generate HTML thumbnail preview
-    preview_path = os.path.join(output_dir, "preview.html")
+    preview_path = os.path.join(report_dir, "preview.html")
     try:
         from generate_preview import generate_preview_html
         html_content = generate_preview_html(
@@ -1407,7 +1433,7 @@ def main() -> None:
     print()
     print("🚀 Step 5/5: Applying move plan...")
     from apply_move_plan import apply_plan
-    log_path = os.path.join(output_dir, "move_log.csv")
+    log_path = os.path.join(log_dir, "move_log.csv")
     apply_plan(plan_csv, log_path, mode=prefs["trash_mode"])
     print()
     print("✅ Done! Check move_log.csv for details.")
