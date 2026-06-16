@@ -321,13 +321,42 @@ def _open_output_db(output_path: str) -> sqlite3.Connection:
             photos_quality_vector TEXT DEFAULT ''
         )
     """)
-    # Indexes
+    # Add missing columns (e.g. when re-scanning over a directory-scan DB)
+    existing_cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+    defined_cols = [
+        ("exif_datetime", "TEXT DEFAULT ''"), ("file_mtime", "TEXT DEFAULT ''"),
+        ("width", "TEXT DEFAULT ''"), ("height", "TEXT DEFAULT ''"),
+        ("phash", "TEXT DEFAULT ''"), ("media_type", "TEXT NOT NULL DEFAULT 'image'"),
+        ("category", "TEXT NOT NULL DEFAULT 'photo'"),
+        ("gps_latitude", "TEXT DEFAULT ''"), ("gps_longitude", "TEXT DEFAULT ''"),
+        ("camera_make", "TEXT DEFAULT ''"), ("camera_model", "TEXT DEFAULT ''"),
+        ("has_exif", "INTEGER DEFAULT 0"), ("folder_tag", "TEXT DEFAULT ''"),
+        ("scan_root", "TEXT DEFAULT ''"), ("scanned_at", "TEXT DEFAULT ''"),
+        ("aspect_ratio", "TEXT DEFAULT ''"), ("subsec_time", "TEXT DEFAULT ''"),
+        ("format_family", "TEXT DEFAULT ''"),
+        ("photos_favorite", "INTEGER DEFAULT 0"),
+        ("photos_hidden", "INTEGER DEFAULT 0"),
+        ("photos_screenshot", "INTEGER DEFAULT 0"),
+        ("photos_duplicate_visibility", "INTEGER DEFAULT 0"),
+        ("photos_cloud_state", "INTEGER DEFAULT 0"),
+        ("photos_albums", "TEXT DEFAULT ''"),
+        ("photos_shared_albums", "TEXT DEFAULT ''"),
+        ("photos_icloud_locally_available", "INTEGER DEFAULT -1"),
+        ("photos_quality_vector", "TEXT DEFAULT ''"),
+    ]
+    for col_name, col_type in defined_cols:
+        if col_name not in existing_cols:
+            conn.execute(f"ALTER TABLE photos ADD COLUMN {col_name} {col_type}")
+
+    # Indexes — only on columns that actually exist
+    all_cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
     for idx in ["idx_sha256", "idx_phash", "idx_category", "idx_exif_datetime",
                 "idx_folder_tag", "idx_camera_model", "idx_aspect_ratio",
                 "idx_format_family", "idx_photos_favorite", "idx_photos_albums",
                 "idx_photos_shared_albums", "idx_photos_icloud_locally_available"]:
         col = idx.replace("idx_", "")
-        conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON photos({col})")
+        if col in all_cols:
+            conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON photos({col})")
     conn.commit()
     return conn
 
@@ -371,16 +400,27 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
     album_map = {}  # asset_pk -> [album_title, ...]
     shared_album_map = {}  # asset_pk -> [shared_album_title, ...]
     try:
-        # Dynamically find junction table name
-        junction_tables = [row[0] for row in photos_db.execute(
+        # Dynamically find the album-asset junction table.
+        # The correct table (e.g. Z_33ASSETS) has BOTH an "ALBUM" column and an
+        # "ASSET" column.  Other Z_%ASSETS tables (Memories, Suggestions) lack
+        # an ALBUM column, so we filter by checking the schema.
+        candidate_tables = [row[0] for row in photos_db.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'Z_%ASSETS'"
         ).fetchall()]
-        junction_table = junction_tables[0] if junction_tables else "Z_33ASSETS"
-
-        # Get column names for junction table
-        j_cols = [row[1] for row in photos_db.execute(f"PRAGMA table_info({junction_table})").fetchall()]
-        album_col = next((c for c in j_cols if "ALBUM" in c.upper()), None)
-        asset_col = next((c for c in j_cols if "ASSET" in c.upper()), None)
+        junction_table = None
+        album_col = None
+        asset_col = None
+        for t in candidate_tables:
+            j_cols = [row[1] for row in photos_db.execute(f"PRAGMA table_info({t})").fetchall()]
+            ac = next((c for c in j_cols if "ALBUM" in c.upper()), None)
+            asc = next((c for c in j_cols if "ASSET" in c.upper()), None)
+            if ac and asc:
+                junction_table = t
+                album_col = ac
+                asset_col = asc
+                break
+        if not junction_table:
+            junction_table = "Z_33ASSETS"
 
         if album_col and asset_col:
             # Get CloudSharedAlbum Z_ENT value
