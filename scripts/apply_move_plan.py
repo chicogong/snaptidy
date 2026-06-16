@@ -4,15 +4,15 @@
 Moves files according to the plan CSV.  Supports three modes:
   --mode move           — Move files to the specified target directory (default)
   --mode trash          — Move files to macOS Trash using Finder (safer, recoverable)
-  --mode photos-trash   — Move Photos.app managed files to Trash via PyObjC
-                          (keeps Photos library consistent)
+  --mode photos-trash   — Move Photos.app managed files to "Recently Deleted"
+                          via AppleScript (keeps Photos library consistent)
 
 Safety guarantees:
   - No files are ever permanently deleted
   - If target exists, the move is skipped
   - All operations are logged to move_log.csv
   - In trash mode, files go to macOS Trash and can be restored via Finder
-  - In photos-trash mode, PyObjC is used to properly remove from Photos.app
+  - In photos-trash mode, photos go to Photos.app "Recently Deleted" (30-day recovery)
 """
 
 import argparse
@@ -21,23 +21,186 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from datetime import datetime
 
-# Check for PyObjC availability (optional, for Photos.app integration)
-PYOBJC_AVAILABLE = False
-try:
-    import objc
-    PYOBJC_AVAILABLE = True
-except ImportError:
-    pass
 
+# ---------------------------------------------------------------------------
+# Automation permission management for Photos.app
+# ---------------------------------------------------------------------------
+
+def _ensure_photos_running() -> bool:
+    """Launch Photos.app if not already running.
+
+    The `activate` Apple Event is exempt from automation permission checks,
+    so this always works.  Returns True if Photos.app is running.
+    """
+    try:
+        subprocess.run(
+            ["/usr/bin/osascript", "-e",
+             'tell application "Photos" to activate'],
+            capture_output=True, text=True, timeout=15,
+        )
+        time.sleep(2)  # wait for Photos to fully start
+        return True
+    except Exception:
+        return False
+
+
+def _check_photos_automation_permission() -> str:
+    """Check whether automation permission for Photos.app has been granted.
+
+    Returns one of: "granted", "denied", "sandboxed", "not_running", "error".
+    """
+    script = '''
+tell application "Photos"
+    try
+        set c to count of albums
+        return "granted"
+    on error errMsg number errorNumber
+        if errorNumber is -1743 then
+            return "denied"
+        else if errorNumber is -10004 then
+            return "sandboxed"
+        else if errorNumber is -600 then
+            return "not_running"
+        else
+            return "error:" & errorNumber
+        end if
+    end try
+end tell
+'''
+    try:
+        result = subprocess.run(
+            ["/usr/bin/osascript", "-s", "o", "-e", script],
+            capture_output=True, text=True, timeout=15,
+        )
+        output = result.stdout.strip()
+        if output.startswith("granted"):
+            return "granted"
+        elif output.startswith("denied"):
+            return "denied"
+        elif output.startswith("sandboxed"):
+            return "sandboxed"
+        elif output.startswith("not_running"):
+            return "not_running"
+        return "error"
+    except Exception:
+        return "error"
+
+
+def _request_photos_automation_permission() -> bool:
+    """Attempt to trigger the automation permission dialog for Photos.app.
+
+    Sends a read-only Apple Event (`count of albums`) which causes macOS to
+    show the system permission dialog on first use.  Returns True if
+    permission is now granted.
+    """
+    # Make sure Photos.app is running first
+    _ensure_photos_running()
+
+    print()
+    print("  🔐 首次使用 Photos.app 自动化功能，需要授权。")
+    print("  如果弹出系统对话框，请点击「允许」/「OK」。")
+    print("  If a system dialog appears, click \"Allow\" / \"OK\".")
+    print()
+
+    # Send a read-only command to trigger the permission dialog
+    result = subprocess.run(
+        ["/usr/bin/osascript", "-e",
+         'tell application "Photos" to count of albums'],
+        capture_output=True, text=True, timeout=30,
+    )
+
+    if result.returncode == 0:
+        print("  ✅ 自动化权限已授予 / Automation permission granted.")
+        return True
+    elif "-1743" in result.stderr:
+        print("  ❌ 权限被拒绝 / Permission denied.")
+        _print_permission_instructions()
+        return False
+    elif "-600" in result.stderr:
+        print("  ⚠️  Photos.app 未运行，请重试 / Photos.app not running, please retry.")
+        return False
+    else:
+        print(f"  ⚠️  未知错误 / Unknown error: {result.stderr.strip()}")
+        return False
+
+
+def _print_permission_instructions() -> None:
+    """Print step-by-step instructions for manually granting automation permission."""
+    print()
+    print("  ╔══════════════════════════════════════════════════════════╗")
+    print("  ║  手动授权 Photos.app 自动化权限 / Manual Authorization  ║")
+    print("  ╠══════════════════════════════════════════════════════════╣")
+    print("  ║                                                          ║")
+    print("  ║  1. 打开「系统设置」>「隐私与安全性」>「自动化」       ║")
+    print("  ║     System Settings > Privacy & Security > Automation   ║")
+    print("  ║                                                          ║")
+    print("  ║  2. 找到你运行此脚本的终端应用                          ║")
+    print("  ║     (Terminal.app / iTerm2 / VSCode 等)                 ║")
+    print("  ║                                                          ║")
+    print("  ║  3. 勾选该应用下 Photos 旁边的复选框                    ║")
+    print("  ║     Check the box next to Photos under your terminal    ║")
+    print("  ║                                                          ║")
+    print("  ║  4. 如果列表中没有出现：                                ║")
+    print("  ║     - 先运行一次此脚本触发权限请求                      ║")
+    print("  ║     - 或在终端执行: tccutil reset AppleEvents           ║")
+    print("  ║       (重置后重新运行脚本即可再次弹出授权对话框)        ║")
+    print("  ║                                                          ║")
+    print("  ╚══════════════════════════════════════════════════════════╝")
+    print()
+
+
+def ensure_photos_permission() -> bool:
+    """High-level entry: ensure Photos.app automation permission is granted.
+
+    1. Check if already granted.
+    2. If not, launch Photos.app and request permission.
+    3. If denied or sandboxed, print manual instructions and return False.
+
+    Returns True if permission is available.
+    """
+    status = _check_photos_automation_permission()
+
+    if status == "granted":
+        return True
+
+    if status == "not_running":
+        print("  📸 正在启动 Photos.app / Launching Photos.app...")
+        _ensure_photos_running()
+        status = _check_photos_automation_permission()
+        if status == "granted":
+            return True
+
+    if status == "denied":
+        print("  ❌ Photos.app 自动化权限已被拒绝 / Automation permission denied.")
+        _print_permission_instructions()
+        return False
+
+    if status == "sandboxed":
+        print("  ⚠️  当前运行环境限制了对 Photos.app 的访问。")
+        print("     Current environment restricts access to Photos.app.")
+        print("     请在终端 (Terminal.app) 中运行此脚本。")
+        print("     Please run this script from Terminal.app instead.")
+        print()
+        return False
+
+    # Not yet granted — try to request (will trigger the system dialog)
+    return _request_photos_automation_permission()
+
+
+# ---------------------------------------------------------------------------
+# File operations
+# ---------------------------------------------------------------------------
 
 def move_to_trash(path: str) -> tuple:
     """Move a file to macOS Trash using osascript (Finder).  Returns (success, message)."""
     try:
         result = subprocess.run(
-            ["osascript", "-e", f'tell application "Finder" to delete POSIX file "{path}"'],
-            capture_output=True, text=True, timeout=30
+            ["/usr/bin/osascript", "-e",
+             f'tell application "Finder" to delete POSIX file "{path}"'],
+            capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:
             return True, ""
@@ -48,104 +211,137 @@ def move_to_trash(path: str) -> tuple:
 
 
 def move_photos_to_trash(file_paths: list) -> tuple:
-    """Move Photos.app managed files to Trash via PyObjC.
+    """Move Photos.app managed files to "Recently Deleted" via AppleScript.
 
-    Uses Photos.app's scripting bridge to properly remove photos,
-    keeping the library database consistent.  Photos are moved to
-    Photos.app's "Recently Deleted" album (recoverable for 30 days).
+    Uses osascript to send Apple Events to Photos.app.  This is the
+    recommended approach because osascript is an Apple-signed system binary
+    that reliably triggers the macOS automation permission dialog.
 
-    If PyObjC/ScriptingBridge fails (permission issues), falls back to
+    The deletion flow uses `spotlight` to select each photo, then sends
+    Cmd+Delete to move it to Photos.app's "Recently Deleted" album.
+    Photos can be recovered for 30 days from "Recently Deleted".
+
+    If the automation permission is denied after requesting, falls back to
     generating a .applescript file for the user to run manually.
 
     Returns (success_count, error_count, messages, deleted_filenames).
     """
-    if not PYOBJC_AVAILABLE:
+    if not file_paths:
+        return 0, 0, ["No files to process"], set()
+
+    # Step 1: Ensure we have automation permission
+    if not ensure_photos_permission():
+        # Permission denied — generate a .applescript file for manual execution
         return _fallback_applescript(file_paths)
 
-    try:
-        from ScriptingBridge import SBApplication
-        photos_app = SBApplication.applicationWithBundleIdentifier_("com.apple.Photos")
+    # Step 2: Ensure Photos.app is running
+    _ensure_photos_running()
 
-        if photos_app is None:
-            return _fallback_applescript(file_paths)
+    # Step 3: Build filename→path mapping for matching
+    # Photos.app AppleScript uses `filename` property (e.g., "IMG_0000.jpg")
+    # which corresponds to the UUID-based filename in the library
+    target_filenames = {}
+    for fp in file_paths:
+        target_filenames[os.path.basename(fp)] = fp
 
-        # Activate Photos.app
+    # Step 4: Build UUID→path mapping for matching
+    # Photos.app AppleScript `id` property returns "{UUID}/L0/001"
+    # Our scan DB `filename` is "{UUID}.{ext}" (the UUID-based filename)
+    # We extract UUID from the filename (strip extension) to match
+    target_uuids = {}  # UUID → file_path
+    for fp in file_paths:
+        basename = os.path.basename(fp)
+        # Extract UUID: "46CF7286-889C-4AB0-80E5-57F8B31F1547.jpeg" → "46CF7286-889C-4AB0-80E5-57F8B31F1547"
+        uuid_part = os.path.splitext(basename)[0]
+        if len(uuid_part) >= 32:  # Valid UUID format
+            target_uuids[uuid_part] = fp
+
+    # Step 5: Delete each matching photo using spotlight + Cmd+Delete
+    # This is the only reliable method: Photos.app's `delete` AppleScript
+    # command fails with -10000, but spotlight + GUI scripting works.
+    success = 0
+    errors = 0
+    messages = []
+    deleted_filenames = set()
+
+    for uuid, fp in target_uuids.items():
+        # Use Photos.app id format: "{UUID}/L0/001"
+        photos_id = f"{uuid}/L0/001"
+        delete_script = f'''
+tell application "Photos"
+    activate
+    try
+        set theItem to media item id "{photos_id}"
+        set theFilename to filename of theItem
+        spotlight theItem
+        delay 2
+        set sel to selection
+        set selCount to count of sel
+        
+        if selCount > 0 then
+            tell application "System Events"
+                tell application process "Photos"
+                    keystroke (ASCII character 8) using command down
+                end tell
+            end tell
+            delay 2
+            tell application "System Events"
+                tell application process "Photos"
+                    try
+                        if (exists sheet 1 of window 1) then
+                            click button "删除" of sheet 1 of window 1
+                        end if
+                    end try
+                end tell
+            end tell
+            return "deleted:" & theFilename
+        else
+            return "no_selection:" & theFilename
+        end if
+    on error errMsg
+        return "error:" & errMsg
+    end try
+end tell
+'''
         try:
-            photos_app.activate()
-        except Exception:
-            pass
-
-        success = 0
-        errors = 0
-        messages = []
-        deleted_filenames = set()
-
-        # Build a set of target filenames for quick lookup
-        target_filenames = set()
-        for fp in file_paths:
-            target_filenames.add(os.path.basename(fp))
-
-        # Get the media items
-        media_items = photos_app.mediaItems()
-        if media_items is None:
-            return _fallback_applescript(file_paths)
-
-        # Check if we actually got items (permission may return empty)
-        try:
-            item_count = media_items.count()
-            if item_count is None or item_count == 0:
-                # Try array() as alternative
-                arr = media_items.array()
-                if arr is None or len(arr) == 0:
-                    return _fallback_applescript(file_paths)
-        except Exception:
-            return _fallback_applescript(file_paths)
-
-        # Find and delete matching items
-        items_to_delete = []
-        try:
-            for item in media_items():
-                try:
-                    item_path = item.path()
-                    if item_path and os.path.basename(item_path) in target_filenames:
-                        items_to_delete.append(item)
-                except Exception:
-                    continue
-        except Exception:
-            return _fallback_applescript(file_paths)
-
-        if not items_to_delete:
-            return _fallback_applescript(file_paths)
-
-        # Delete items (moves to Recently Deleted in Photos.app)
-        for item in items_to_delete:
-            try:
-                item.delete()
+            result = subprocess.run(
+                ["/usr/bin/osascript", "-e", delete_script],
+                capture_output=True, text=True, timeout=30,
+            )
+            if result.returncode == 0 and "deleted:" in result.stdout:
                 success += 1
-                try:
-                    deleted_filenames.add(item.name())
-                except Exception:
-                    pass
-            except Exception as e:
+                deleted_filenames.add(fname)
+            elif "no_selection:" in result.stdout:
+                # spotlight didn't select the photo — try GUI approach
                 errors += 1
-                try:
-                    name = item.name()
-                except Exception:
-                    name = "unknown"
-                messages.append(f"Error deleting {name}: {e}")
+                messages.append(f"Could not select photo: {fname}")
+            else:
+                errors += 1
+                messages.append(f"Delete failed for {fname}: {result.stderr.strip()[:100]}")
+        except subprocess.TimeoutExpired:
+            errors += 1
+            messages.append(f"Timeout deleting {fname}")
+        except Exception as e:
+            errors += 1
+            messages.append(f"Error deleting {fname}: {e}")
 
-        return success, errors, messages, deleted_filenames
+    if success > 0:
+        msg = (
+            f"✅ {success} photos moved to Photos.app "
+            f'"Recently Deleted" (30-day recovery).'
+        )
+        messages.insert(0, msg)
 
-    except Exception as e:
-        return _fallback_applescript(file_paths)
+    return success, errors, messages, deleted_filenames
 
 
 def _fallback_applescript(file_paths: list) -> tuple:
     """Generate a .applescript file for the user to run manually.
 
-    This is used when ScriptingBridge fails (permission issues on macOS).
-    The generated AppleScript will delete the specified photos from
-    Photos.app, moving them to "Recently Deleted" (recoverable for 30 days).
+    This is used when automation permission is denied or the sandbox blocks
+    Apple Events.  The generated AppleScript uses spotlight + Cmd+Delete
+    (GUI scripting) to delete photos from Photos.app, which moves them to
+    "Recently Deleted" (recoverable for 30 days).
 
     Returns (0, len(file_paths), [messages], set()) — no items actually deleted,
     but the script file is generated for manual execution.
@@ -153,25 +349,66 @@ def _fallback_applescript(file_paths: list) -> tuple:
     if not file_paths:
         return 0, 0, ["No files to process"], set()
 
-    # Build target path set
-    target_paths = set(file_paths)
+    # Build target filename set
+    target_filenames = set()
+    for fp in file_paths:
+        target_filenames.add(os.path.basename(fp))
 
-    # Generate AppleScript
-    script = 'set targetPaths to {}\n'
-    for path in target_paths:
-        script += f'set end of targetPaths to "{path}"\n'
+    # Generate AppleScript using spotlight + Cmd+Delete approach
+    # (the `delete` AppleScript command fails with -10000 in Photos.app)
+    filename_checks = []
+    for fname in sorted(target_filenames):
+        escaped = fname.replace('"', '\\"')
+        filename_checks.append(f'        if theFilename is "{escaped}" then')
 
-    script += '''
+    # Build a script that lists all media items, finds matches, and
+    # deletes them using spotlight + GUI scripting
+    script = '''\
 tell application "Photos"
+    activate
+    delay 2
+    set allItems to media items
     set deletedCount to 0
-    set albumPhotos to media items
-    repeat with aPhoto in albumPhotos
+    repeat with i from 1 to count of allItems
+        set theItem to media item i
         try
-            set photoPath to path of aPhoto
-            if photoPath is not missing value then
-                if targetPaths contains photoPath then
-                    delete aPhoto
+            set theFilename to filename of theItem
+'''
+    # Add filename matching
+    first = True
+    for fname in sorted(target_filenames):
+        escaped = fname.replace('"', '\\"')
+        if first:
+            script += f'            if theFilename is "{escaped}" then\n'
+            first = False
+        else:
+            script += f'            else if theFilename is "{escaped}" then\n'
+
+    script += '''\
+                -- Spotlight the photo to select it
+                spotlight theItem
+                delay 2
+                set sel to selection
+                if (count of sel) > 0 then
+                    -- Use Cmd+Delete to move to Recently Deleted
+                    tell application "System Events"
+                        tell application process "Photos"
+                            keystroke (ASCII character 8) using command down
+                        end tell
+                    end tell
+                    delay 2
+                    -- Handle confirmation dialog if it appears
+                    tell application "System Events"
+                        tell application process "Photos"
+                            try
+                                if (exists sheet 1 of window 1) then
+                                    click button "删除" of sheet 1 of window 1
+                                end if
+                            end try
+                        end tell
+                    end tell
                     set deletedCount to deletedCount + 1
+                    delay 1
                 end if
             end if
         end try
@@ -179,12 +416,8 @@ tell application "Photos"
     return deletedCount
 end tell
 '''
-    # Write to file
-    script_dir = os.path.dirname(file_paths[0]) if file_paths else "."
-    # Put script next to the plan file
-    plan_dir = os.path.dirname(os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..")))
-    # Use current working directory
+
+    # Write to a file next to the plan output directory
     import tempfile
     script_path = os.path.join(tempfile.gettempdir(),
                                "snaptidy_photos_trash.applescript")
@@ -192,14 +425,22 @@ end tell
         f.write(script)
 
     msg = (
-        f"⚠️  ScriptingBridge cannot access Photos.app (permission issue).\n"
-        f"   Generated AppleScript: {script_path}\n"
-        f"   Run in Terminal: osascript {script_path}\n"
-        f"   This will move {len(file_paths)} photos to Photos.app's "
+        f"⚠️  Photos.app 自动化权限不可用 / Automation permission unavailable.\n"
+        f"   已生成 AppleScript / Generated: {script_path}\n"
+        f"   在终端运行 / Run in Terminal:\n"
+        f"     osascript {script_path}\n"
+        f"   这将移动 {len(target_filenames)} 张照片到 Photos.app 的"
+        f'"最近删除"（30天内可恢复）。\n'
+        f'   This will move {len(target_filenames)} photos to Photos.app\'s '
         f'"Recently Deleted" (recoverable for 30 days).'
     )
-    return 0, len(file_paths), [msg], set()
+    _print_permission_instructions()
+    return 0, len(target_filenames), [msg], set()
 
+
+# ---------------------------------------------------------------------------
+# Plan application
+# ---------------------------------------------------------------------------
 
 def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
     """Apply the move plan.  mode: 'move', 'trash', or 'photos-trash'."""
@@ -230,7 +471,7 @@ def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
                     "timestamp": timestamp,
                     "action": "photos-trash",
                     "source_path": path,
-                    "target_path": "Photos_Trash",
+                    "target_path": "Photos_Recently_Deleted",
                     "reason": "Photos.app managed file",
                     "status": "photos_trashed" if is_deleted else "error",
                     "message": "; ".join(messages) if messages and not is_deleted else "",
@@ -308,11 +549,15 @@ def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
     if stats["trashed"]:
         parts.append(f"Trashed: {stats['trashed']}")
     if stats["photos_trashed"]:
-        parts.append(f"Photos Trashed: {stats['photos_trashed']}")
+        parts.append(f"Photos → Recently Deleted: {stats['photos_trashed']}")
     parts.append(f"Skipped: {stats['skipped']}")
     parts.append(f"Errors: {stats['error']}")
     print(f"  {'  |  '.join(parts)}")
 
+
+# ---------------------------------------------------------------------------
+# Undo support
+# ---------------------------------------------------------------------------
 
 def compute_file_checksum(path: str) -> str:
     """Compute SHA-256 checksum of a file for undo verification."""
@@ -446,13 +691,17 @@ def undo_last(plan_dir: str) -> None:
         print(f"   Undo record kept: {latest}")
 
 
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Apply a move plan for duplicate files (safe: move or trash)")
     parser.add_argument("--plan", required=True, help="Path to move_plan.csv")
     parser.add_argument("--mode", choices=["move", "trash", "photos-trash"], default="move",
                         help="Action mode: 'move' to review folder, 'trash' to macOS Trash, "
-                             "'photos-trash' for Photos.app managed files (default: move)")
+                             "'photos-trash' for Photos.app Recently Deleted (default: move)")
     parser.add_argument("--undo", action="store_true",
                         help="Undo the most recent move operation")
     args = parser.parse_args()
@@ -474,10 +723,8 @@ def main() -> None:
     if args.mode == "trash":
         print("   Files will be moved to macOS Trash (recoverable via Finder)")
     elif args.mode == "photos-trash":
-        print("   Files will be removed from Photos.app via PyObjC")
-        if not PYOBJC_AVAILABLE:
-            print("   ❌ PyObjC not available — install with: pip install pyobjc-framework-Photos")
-            print("   Falling back to file-system Trash mode...")
+        print("   Photos will be moved to Photos.app \"Recently Deleted\" (30-day recovery)")
+        print("   首次使用会弹出授权对话框 / First use will show a permission dialog")
     else:
         print("   Files will be moved to review folder (NOT deleted)")
     print()
