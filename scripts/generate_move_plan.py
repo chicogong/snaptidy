@@ -30,9 +30,18 @@ def read_duplicates(dups_path: str) -> dict:
     match_types = {}  # group_id -> match_type
     with open(dups_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
+        # Validate CSV has expected columns
+        if reader.fieldnames is None or "file_path" not in (reader.fieldnames or []):
+            print(f"Error: {dups_path} is not a valid duplicates CSV.", file=sys.stderr)
+            print("       Expected columns: group_id, phash, file_path, match_type", file=sys.stderr)
+            print("       If using --format human, re-run with --format csv (default).", file=sys.stderr)
+            sys.exit(1)
         for row in reader:
             gid = row.get("group_id")
-            groups.setdefault(gid, []).append(row.get("file_path"))
+            fp = row.get("file_path")
+            if not gid or not fp:
+                continue  # Skip rows with missing data
+            groups.setdefault(gid, []).append(fp)
             mt = row.get("match_type", "")
             if mt and gid not in match_types:
                 match_types[gid] = mt
@@ -167,6 +176,7 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
     """Generate a move plan using smart priority rules."""
     plan = []
     review_folder = "06_Duplicates_待确认删除" if not use_trash else "__TRASH__"
+    seen_paths = set()  # Track files already added to plan (deduplicate across groups)
 
     # Human-readable labels for match types
     MATCH_TYPE_LABELS = {
@@ -177,6 +187,7 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
         "cross_format": "cross-format duplicate",
         "burst_subsec": "burst photo",
         "apple_quality_vector": "Apple QL similar",
+        "cnn_mobilenet": "CNN similar",
         "cnn_mobilenet": "CNN (MobileNet) similar",
     }
 
@@ -220,6 +231,9 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
         keep_info = f"({', '.join(keep_reason_parts)})" if keep_reason_parts else ""
 
         for s, path, meta in scored[1:]:
+            # Skip if already in plan from another group
+            if path in seen_paths:
+                continue
             # Build reason for moving
             move_reason_parts = [f"duplicate of {keep_path} {keep_info}"]
             if match_label:
@@ -265,6 +279,7 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
                 "target_path": dest,
                 "reason": reason,
             })
+            seen_paths.add(path)
     return plan
 
 
