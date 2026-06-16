@@ -237,14 +237,7 @@ def move_photos_to_trash(file_paths: list) -> tuple:
     # Step 2: Ensure Photos.app is running
     _ensure_photos_running()
 
-    # Step 3: Build filename→path mapping for matching
-    # Photos.app AppleScript uses `filename` property (e.g., "IMG_0000.jpg")
-    # which corresponds to the UUID-based filename in the library
-    target_filenames = {}
-    for fp in file_paths:
-        target_filenames[os.path.basename(fp)] = fp
-
-    # Step 4: Build UUID→path mapping for matching
+    # Step 3: Build UUID→path mapping for matching
     # Photos.app AppleScript `id` property returns "{UUID}/L0/001"
     # Our scan DB `filename` is "{UUID}.{ext}" (the UUID-based filename)
     # We extract UUID from the filename (strip extension) to match
@@ -256,13 +249,13 @@ def move_photos_to_trash(file_paths: list) -> tuple:
         if len(uuid_part) >= 32:  # Valid UUID format
             target_uuids[uuid_part] = fp
 
-    # Step 5: Delete each matching photo using spotlight + Cmd+Delete
+    # Step 4: Delete each matching photo using spotlight + Cmd+Delete
     # This is the only reliable method: Photos.app's `delete` AppleScript
     # command fails with -10000, but spotlight + GUI scripting works.
     success = 0
     errors = 0
     messages = []
-    deleted_filenames = set()
+    deleted_paths = set()  # Track by UUID for reliable matching in apply_plan
 
     for uuid, fp in target_uuids.items():
         # Use Photos.app id format: "{UUID}/L0/001"
@@ -277,7 +270,7 @@ tell application "Photos"
         delay 2
         set sel to selection
         set selCount to count of sel
-        
+
         if selCount > 0 then
             tell application "System Events"
                 tell application process "Photos"
@@ -308,22 +301,23 @@ end tell
                 ["/usr/bin/osascript", "-e", delete_script],
                 capture_output=True, text=True, timeout=30,
             )
-            if result.returncode == 0 and "deleted:" in result.stdout:
+            stdout = result.stdout.strip()
+            if result.returncode == 0 and "deleted:" in stdout:
+                # Track by UUID for reliable matching in apply_plan
                 success += 1
-                deleted_filenames.add(fname)
-            elif "no_selection:" in result.stdout:
-                # spotlight didn't select the photo — try GUI approach
+                deleted_paths.add(uuid)
+            elif "no_selection:" in stdout:
                 errors += 1
-                messages.append(f"Could not select photo: {fname}")
+                messages.append(f"Could not select photo: {os.path.basename(fp)}")
             else:
                 errors += 1
-                messages.append(f"Delete failed for {fname}: {result.stderr.strip()[:100]}")
+                messages.append(f"Delete failed for {os.path.basename(fp)}: {result.stderr.strip()[:100]}")
         except subprocess.TimeoutExpired:
             errors += 1
-            messages.append(f"Timeout deleting {fname}")
+            messages.append(f"Timeout deleting {os.path.basename(fp)}")
         except Exception as e:
             errors += 1
-            messages.append(f"Error deleting {fname}: {e}")
+            messages.append(f"Error deleting {os.path.basename(fp)}: {e}")
 
     if success > 0:
         msg = (
@@ -332,7 +326,7 @@ end tell
         )
         messages.insert(0, msg)
 
-    return success, errors, messages, deleted_filenames
+    return success, errors, messages, deleted_paths
 
 
 def _fallback_applescript(file_paths: list) -> tuple:
@@ -459,14 +453,15 @@ def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
 
         if photos_paths:
             print(f"Processing {len(photos_paths)} files via Photos.app...")
-            success, errors, messages, deleted_filenames = move_photos_to_trash(photos_paths)
+            success, errors, messages, deleted_uuids = move_photos_to_trash(photos_paths)
             stats["photos_trashed"] = success
             stats["error"] = errors
             timestamp = datetime.now().isoformat()
             for path in photos_paths:
+                # Extract UUID from filename to match against deleted_uuids
                 basename = os.path.basename(path)
-                # Determine per-file status based on deleted filenames
-                is_deleted = basename in deleted_filenames
+                file_uuid = os.path.splitext(basename)[0]
+                is_deleted = file_uuid in deleted_uuids
                 log_entries.append({
                     "timestamp": timestamp,
                     "action": "photos-trash",

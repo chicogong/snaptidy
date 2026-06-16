@@ -195,7 +195,6 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
         "cross_format": "cross-format duplicate",
         "burst_subsec": "burst photo",
         "apple_quality_vector": "Apple QL similar",
-        "cnn_mobilenet": "CNN similar",
         "cnn_mobilenet": "CNN (MobileNet) similar",
     }
 

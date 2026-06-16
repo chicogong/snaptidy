@@ -63,7 +63,7 @@ STRATEGIES = {
 TRASH_MODES = {
     "move": "Move to review folder (safest, files stay on disk)",
     "trash": "Move to macOS Trash (recoverable via Finder)",
-    "photos-trash": "Remove from Photos.app via PyObjC (keeps library consistent)",
+    "photos-trash": "Remove from Photos.app via AppleScript (30-day recovery in Recently Deleted)",
 }
 
 # Confirmation thresholds
