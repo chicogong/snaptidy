@@ -54,4 +54,30 @@ python3 scripts/find_similar_photos.py --index photo_index.db --output similar.c
 
 The 17 quality scores include: composition, lighting, pattern, symmetry, color hue, sharpness, perspective, immersion, interaction, and more. Cosine similarity between these vectors identifies visually similar photos without needing Pillow or imagehash.
 
-**Only available for Photos.app library scans** (`scan_photos_library.py`). File-system scans do not have access to Apple's pre-computed vectors.
+**Only available for Photos.app library scans** (`scan_photos_library.py` or `quick_scan.py --library`). File-system scans do not have access to Apple's pre-computed vectors.
+
+## Quick Scan (Zero-Install)
+
+`quick_scan.py` is a zero-dependency entry point that uses only Python stdlib:
+
+```bash
+# Scan a directory
+python3 scripts/quick_scan.py --input /path/to/photos --output index.db --dedup
+
+# Scan a Photos.app library (includes Apple QL vectors)
+python3 scripts/quick_scan.py --library ~/Pictures/Photos\ Library.photoslibrary --output index.db --dedup
+```
+
+Capabilities: SHA-256 dedup, file size stats, auto-categorization (15+ languages), Apple QL vectors (library scan only).
+
+Limitations vs. full scan: no pHash, no EXIF/GPS, no image dimensions (uses only stdlib).
+
+## Human-Readable Output Format
+
+Most output scripts support `--format human` for readable terminal reports:
+
+```bash
+python3 scripts/find_exact_duplicates.py --index index.db --output dups.txt --format human
+python3 scripts/find_similar_photos.py --index index.db --output similar.txt --detect-all --format human
+python3 scripts/generate_move_plan.py --duplicates dups.csv --index index.db --plan plan.txt --target-root /photos --format human
+```

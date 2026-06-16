@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.3-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.4-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
 ## Table of Contents
 
 - [Why SnapTidy?](#why-snaptidy)
-- [What's New](#whats-new-in-v33)
+- [What's New](#whats-new-in-v34)
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
@@ -37,7 +37,18 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
 
-## What's New in v3.3
+## What's New in v3.4
+
+| Feature | Description |
+|---------|-------------|
+| 🧠 **Apple Quality Vector Detection** | Zero-dependency similarity detection using Apple's pre-computed 17-dim ML feature vectors from `ZCOMPUTEDASSETATTRIBUTES` |
+| 📦 **Optional Dependencies** | Pillow, piexif, imagehash are now optional — core features work with just Python stdlib |
+| 👥 **Semi-Automated Shared Albums** | `--share-to-album` tags & selects photos in Photos.app, you just drag to shared album (1 step) |
+| 📚 **Lean SKILL.md** | SKILL.md reduced to ≤65 lines, details in `references/` directory (detection, import, performance, priority-rules, troubleshooting) |
+| 🔧 **Union-Find Grouping** | Apple QL detection uses union-find algorithm for proper transitive similarity grouping |
+
+<details>
+<summary>v3.3</summary>
 
 | Feature | Description |
 |---------|-------------|
@@ -47,22 +58,13 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | 🔄 **Checkpoint & Resume** | Import workflow supports checkpoint resume on interruption |
 | 💾 **Zero Data Loss** | Streaming SQLite writes — commit each entry immediately |
 
-<details>
-<summary>Previous versions</summary>
-
-| Version | Features |
-|---------|----------|
-| 🗄️ **v2.0** | SQLite storage (400x faster), smart priority rules, macOS Trash mode, GPS & camera metadata, auto-categorization |
-| 🔍 **v3.0** | Scaled dedup, cross-format dedup (HEIC↔JPEG), burst detection, Photos.app scan, PyObjC deletion |
-| 🖥️ **v3.1** | Interactive workflow, HTML preview with KEEP/MOVE badges, undo system, iCloud/Android/external drive detection, 15+ languages |
-| 📅 **v3.2** | By-date (YYYY/MM) and by-category organize modes |
-
 </details>
 
 ## Key Features
 
 - 🎯 **SHA-256 Exact Dedup** — Find byte-perfect duplicate files across your entire library
 - 👁️ **Perceptual Hash Similarity** — Detect visually identical images using pHash, with fuzzy Hamming distance threshold
+- 🧠 **Apple Quality Vector Detection** — Zero-dependency similarity via Apple's pre-computed 17-dim ML vectors (`--detect-apple-ql`)
 - 🔀 **Cross-Format Dedup** — HEIC + JPEG of the same photo
 - 📐 **Scaled Dedup** — Same photo at different resolutions
 - 📸 **Burst Detection** — Group burst photos via SubSecTime
@@ -73,6 +75,7 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - ⚡ **Zero Config** — Point at a directory and go
 - 🔌 **Multi-Platform** — Works with Claude Code, Cursor, Windsurf, WorkBuddy, OpenClaw, and more
 - 🗄️ **Scalable** — SQLite backend handles 100k+ photos
+- 📦 **Zero-Install Core** — All optional deps gracefully degrade; core features (SHA-256, Apple QL, metadata) work with just Python stdlib
 
 ## Installation
 
@@ -164,12 +167,20 @@ Or run the scripts directly:
 # Step 1: Scan (SQLite recommended for large libraries)
 python3 scripts/scan_photos.py --input /path/to/your/photos --output ./photo_index.db
 
+# Step 1b: Quick scan (zero-install, no deps needed)
+python3 scripts/quick_scan.py --input /path/to/your/photos --output ./photo_index.db --dedup
+
 # Step 2: Find exact duplicates
 python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./duplicates_exact.csv
+python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./dups.txt --format human
 
 # Step 3 (Optional): Find perceptually similar images
 python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./duplicates_similar.csv
 python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv --detect-all
+
+# Step 3b (Optional): Find similar photos using Apple's zero-dependency ML vectors
+python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar_apple.csv --detect-apple-ql
+python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar_apple.csv --detect-apple-ql --apple-ql-threshold 0.95
 
 # Step 4: Generate a smart move plan
 python3 scripts/generate_move_plan.py \
@@ -203,6 +214,14 @@ python3 scripts/import_to_photos.py --source /Volumes/External/Photos --album "V
 
 # Import from Android DCIM
 python3 scripts/import_to_photos.py --source /Volumes/Android/DCIM --album "Android Import"
+
+# Semi-automated shared album workflow (1 manual drag step)
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos \
+    --album "Vacation 2025" \
+    --share-to-album "Vacation 2025"
+
+# List shared albums (read-only)
+python3 scripts/import_to_photos.py --show-shared-albums
 ```
 
 ### One-Command Interactive Workflow
@@ -279,10 +298,11 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 
 | Script | Purpose | Input | Output |
 |--------|---------|-------|--------|
+| `quick_scan.py` | Zero-install quick scan (stdlib only, SHA-256 + Apple QL) | Photo directory or `.photoslibrary` | `.db` |
 | `scan_photos.py` | Walk directory, extract metadata + GPS + camera | Photo/video directory | `.db` or `.csv` |
 | `scan_photos_library.py` | Scan Photos.app library (reads Photos.sqlite) | `.photoslibrary` bundle | `.db` or `.csv` |
 | `find_exact_duplicates.py` | Group byte-identical files by SHA-256 | `.db` or `.csv` index | `duplicates_exact.csv` |
-| `find_similar_photos.py` | Group visually identical images by pHash | `.db` or `.csv` index | `duplicates_similar.csv` |
+| `find_similar_photos.py` | Group visually identical images by pHash, Apple QL, scaled, cross-format, burst | `.db` or `.csv` index | `duplicates_similar.csv` |
 | `generate_move_plan.py` | Smart priority scoring, propose which to move | Duplicates CSV + index | `move_plan.csv` |
 | `apply_move_plan.py` | Execute move plan (move or Trash mode) + undo | `move_plan.csv` | `move_log.csv` |
 | `organize_photos.py` | One-command interactive pipeline | Source directory | Full pipeline output |
@@ -291,15 +311,26 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 
 ## Requirements
 
-| Package | Purpose |
-|---------|---------|
-| **Pillow** | Image reading, dimensions, format conversion |
-| **piexif** | EXIF data extraction (dates, GPS, camera info) |
-| **imagehash** | Perceptual hash computation |
+### Core (zero-install)
 
-Only 3 core dependencies. No heavy frameworks. SQLite is built into Python.
+| What | How |
+|------|-----|
+| Python 3.9+ | Built-in stdlib: `hashlib`, `sqlite3`, `os`, `argparse`, `json`, `math` |
+| Apple QL Detection | Reads pre-computed vectors from `ZCOMPUTEDASSETATTRIBUTES` — no extra deps |
+| SHA-256 dedup | Uses `hashlib.sha256` from stdlib |
 
-Optional: **pillow-heif** (HEIC/HEIF support), **pyobjc-framework-Photos** (Photos.app deletion), **photoscript** (Photos.app import)
+### Optional (enhanced features when installed)
+
+| Package | Purpose | Fallback if missing |
+|---------|---------|---------------------|
+| **Pillow** | Image dimensions, format detection | Dimensions from Photos.app metadata |
+| **piexif** | EXIF dates, GPS, camera info | Date from file mtime/Photos.app |
+| **imagehash** | Perceptual hash (pHash) similarity | Apple QL detection (zero-dep alternative) |
+| **pillow-heif** | HEIC/HEIF full support | HEIC files skipped for pHash |
+| **photoscript** | High-level Photos.app import | osascript fallback (no extra deps) |
+| **pyobjc-framework-Photos** | Low-level Photos.app control | osascript fallback |
+
+**All optional dependencies degrade gracefully** — SnapTidy prints a warning and continues with reduced functionality. No crashes, no hard requirements.
 
 ## Platform Compatibility
 

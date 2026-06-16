@@ -610,25 +610,33 @@ def detect_apple_quality_similar_db(index_path: str, threshold: float = 0.92) ->
     if len(entries_with_vector) < 2:
         return []
 
-    # Pairwise cosine similarity
-    visited = set()
-    groups = {}
-    group_id = 0
+    # Union-Find for proper group merging
+    # Each path starts as its own group; similar pairs get merged
+    parent = {}  # path -> root path
 
+    def find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])  # path compression
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    # Build similarity pairs using union-find
     for i in range(len(entries_with_vector)):
         path1, vec1 = entries_with_vector[i]
-        if path1 in visited:
-            continue
+        parent.setdefault(path1, path1)
 
-        # Compute magnitude once
         mag1 = math.sqrt(sum(v * v for v in vec1))
         if mag1 == 0:
             continue
 
         for j in range(i + 1, len(entries_with_vector)):
             path2, vec2 = entries_with_vector[j]
-            if path2 in visited:
-                continue
+            parent.setdefault(path2, path2)
 
             dot = sum(a * b for a, b in zip(vec1, vec2))
             mag2 = math.sqrt(sum(v * v for v in vec2))
@@ -637,28 +645,23 @@ def detect_apple_quality_similar_db(index_path: str, threshold: float = 0.92) ->
 
             similarity = dot / (mag1 * mag2)
             if similarity >= threshold:
-                # Find existing group or create new one
-                found_group = None
-                for gid, members in groups.items():
-                    if path1 in members or path2 in members:
-                        found_group = gid
-                        break
+                union(path1, path2)
 
-                if found_group is not None:
-                    groups[found_group].add(path1)
-                    groups[found_group].add(path2)
-                else:
-                    group_id += 1
-                    groups[group_id] = {path1, path2}
+    # Collect groups from union-find roots
+    root_groups = defaultdict(set)
+    for path in parent:
+        root_groups[find(path)].add(path)
 
-                visited.add(path1)
-                visited.add(path2)
-
+    # Only keep groups with 2+ members
     result = []
-    for gid, members in groups.items():
+    group_id = 0
+    for root, members in sorted(root_groups.items()):
+        if len(members) < 2:
+            continue
+        group_id += 1
         for path in sorted(members):
             result.append({
-                "group_id": gid,
+                "group_id": group_id,
                 "phash": "",
                 "file_path": path,
                 "match_type": "apple_quality_vector",
@@ -676,11 +679,96 @@ def write_csv(entries, output_path):
             writer.writerow(entry)
 
 
+def write_human(entries, output_path, index_path: str = ""):
+    """Write human-readable similar photos report."""
+    # Load metadata for size info
+    metadata = {}
+    if index_path and index_path.endswith(".db"):
+        try:
+            conn = sqlite3.connect(index_path)
+            conn.row_factory = sqlite3.Row
+            for row in conn.execute("SELECT file_path, size_bytes, category FROM photos"):
+                metadata[row["file_path"]] = {
+                    "size": row["size_bytes"] or 0,
+                    "category": row["category"] or "",
+                }
+            conn.close()
+        except Exception:
+            pass
+
+    # Group by group_id
+    groups = {}
+    for e in entries:
+        groups.setdefault(e["group_id"], []).append(e)
+
+    MATCH_LABELS = {
+        "exact_phash": "pHash exact match",
+        "fuzzy_phash": "pHash similar",
+        "scaled": "scaled duplicate",
+        "cross_format": "cross-format",
+        "burst_subsec": "burst",
+        "apple_quality_vector": "Apple QL similar",
+    }
+
+    lines = []
+    lines.append("=" * 72)
+    lines.append(f"Similar Photos Report — {len(entries)} images in {len(groups)} groups")
+    lines.append("=" * 72)
+    lines.append("")
+
+    # Summary by method
+    method_counts = {}
+    for e in entries:
+        mt = e.get("match_type", "unknown")
+        method_counts[mt] = method_counts.get(mt, 0) + 1
+
+    if method_counts:
+        lines.append("Detection methods:")
+        for mt, count in sorted(method_counts.items()):
+            label = MATCH_LABELS.get(mt, mt)
+            n_groups = len(set(e["group_id"] for e in entries if e.get("match_type") == mt))
+            lines.append(f"  {label}: {count} images in {n_groups} groups")
+        lines.append("")
+
+    for gid in sorted(groups.keys()):
+        members = groups[gid]
+        match_type = members[0].get("match_type", "")
+        match_label = MATCH_LABELS.get(match_type, match_type)
+
+        lines.append(f"Group {gid} ({match_label}, {len(members)} images)")
+        for m in members:
+            meta = metadata.get(m["file_path"], {})
+            size_str = ""
+            if meta.get("size"):
+                sz = meta["size"]
+                if sz >= 1_048_576:
+                    size_str = f"{sz / 1_048_576:.1f}MB"
+                elif sz >= 1_024:
+                    size_str = f"{sz / 1_024:.1f}KB"
+                else:
+                    size_str = f"{sz}B"
+            cat = meta.get("category", "")
+            path = m["file_path"]
+            if len(path) > 55:
+                path = "..." + path[-52:]
+            info = "  ".join(filter(None, [size_str, cat]))
+            if info:
+                lines.append(f"    {info:<16} {path}")
+            else:
+                lines.append(f"    {path}")
+        lines.append("")
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Find similar images: pHash, scaled duplicates, cross-format duplicates")
     parser.add_argument("--index", required=True, help="Path to metadata index (.db or .csv)")
     parser.add_argument("--output", required=True, help="Path to output CSV for similar images")
+    parser.add_argument("--format", choices=["csv", "human"], default="csv",
+                        help="Output format: csv (default) or human (readable report)")
     parser.add_argument("--threshold", type=int, default=0,
                         help="Hamming distance threshold for fuzzy pHash matching (0=exact, default: 0)")
     parser.add_argument("--detect-scaled", action="store_true",
@@ -772,7 +860,10 @@ def main() -> None:
                 r["group_id"] = new_gid
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    write_csv(all_results, output_path)
+    if args.format == "human":
+        write_human(all_results, output_path, index_path)
+    else:
+        write_csv(all_results, output_path)
 
     total_groups = len(set(e["group_id"] for e in all_results)) if all_results else 0
     print(f"Found {len(all_results)} images in {total_groups} groups.")

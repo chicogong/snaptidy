@@ -274,6 +274,71 @@ def write_plan(plan, plan_path: str) -> None:
             writer.writerow(entry)
 
 
+def write_human_plan(plan, plan_path: str, metadata: dict = None) -> None:
+    """Write human-readable move plan."""
+    metadata = metadata or {}
+
+    lines = []
+    lines.append("=" * 72)
+    lines.append(f"Move Plan — {len(plan)} actions")
+    lines.append("=" * 72)
+    lines.append("")
+
+    total_reclaimable = 0
+    for i, entry in enumerate(plan, 1):
+        src = entry["source_path"]
+        reason = entry.get("reason", "")
+
+        # Get file metadata
+        meta = metadata.get(src, {})
+        size = 0
+        try:
+            size = int(meta.get("size_bytes") or 0)
+        except (ValueError, TypeError):
+            pass
+        total_reclaimable += size
+
+        # Format size
+        if size >= 1_073_741_824:
+            size_str = f"{size / 1_073_741_824:.1f} GB"
+        elif size >= 1_048_576:
+            size_str = f"{size / 1_048_576:.1f} MB"
+        elif size >= 1_024:
+            size_str = f"{size / 1_024:.1f} KB"
+        else:
+            size_str = f"{size} B"
+
+        # Shorten path
+        short_src = src
+        if len(short_src) > 60:
+            short_src = "..." + short_src[-57:]
+
+        category = meta.get("category", "")
+        info = "  ".join(filter(None, [size_str, category]))
+
+        lines.append(f"{i:3}. MOVE {short_src}")
+        if info:
+            lines.append(f"     ({info})")
+        if reason:
+            # Truncate long reasons
+            short_reason = reason if len(reason) <= 80 else reason[:77] + "..."
+            lines.append(f"     Reason: {short_reason}")
+        lines.append("")
+
+    # Summary
+    lines.append("-" * 72)
+    if total_reclaimable >= 1_073_741_824:
+        lines.append(f"Total reclaimable: {total_reclaimable / 1_073_741_824:.1f} GB")
+    elif total_reclaimable >= 1_048_576:
+        lines.append(f"Total reclaimable: {total_reclaimable / 1_048_576:.1f} MB")
+    else:
+        lines.append(f"Total reclaimable: {total_reclaimable / 1_024:.1f} KB")
+    lines.append("")
+
+    with open(plan_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate smart move plan for duplicates with priority rules")
@@ -289,6 +354,8 @@ def main() -> None:
                         help="Folder tags to prefer keeping (can specify multiple times)")
     parser.add_argument("--trash", action="store_true",
                         help="Move duplicates to macOS Trash instead of review folder")
+    parser.add_argument("--format", choices=["csv", "human"], default="csv",
+                        help="Output format: csv (default) or human (readable report)")
     args = parser.parse_args()
 
     dups, match_types = read_duplicates(os.path.abspath(args.duplicates))
@@ -309,7 +376,10 @@ def main() -> None:
                          use_trash=args.trash)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.plan)), exist_ok=True)
-    write_plan(plan, os.path.abspath(args.plan))
+    if args.format == "human":
+        write_human_plan(plan, os.path.abspath(args.plan), metadata)
+    else:
+        write_plan(plan, os.path.abspath(args.plan))
 
     # Space savings estimate
     total_reclaimable = 0

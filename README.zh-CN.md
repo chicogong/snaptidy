@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.3-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.4-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
 
 ## 目录
 
 - [为什么选择 SnapTidy？](#为什么选择-snaptidy)
-- [新功能](#v33-新功能)
+- [新功能](#v34-新功能)
 - [核心特性](#核心特性)
 - [安装](#安装)
 - [工作原理](#工作原理)
@@ -37,7 +37,18 @@
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
 
-## v3.3 新功能
+## v3.4 新功能
+
+| 功能 | 说明 |
+|------|------|
+| 🧠 **Apple 质量向量检测** | 零依赖相似度检测，利用 Apple 预计算的 17 维 ML 特征向量（`ZCOMPUTEDASSETATTRIBUTES`） |
+| 📦 **可选依赖** | Pillow、piexif、imagehash 现为可选 — 核心功能仅需 Python 标准库 |
+| 👥 **半自动共享相册** | `--share-to-album` 标记并选中照片，你只需拖到共享相册（1 步操作） |
+| 📚 **精简 SKILL.md** | SKILL.md 缩减至 ≤65 行，详情移至 `references/` 目录（检测、导入、性能、优先级规则、故障排除） |
+| 🔧 **Union-Find 分组** | Apple QL 检测使用 union-find 算法，正确处理传递性相似分组 |
+
+<details>
+<summary>v3.3</summary>
 
 | 功能 | 说明 |
 |------|------|
@@ -47,22 +58,13 @@
 | 🔄 **断点续传** | 导入流程支持中断后续传 |
 | 💾 **零数据丢失** | 流式 SQLite 写入 — 逐条即时提交 |
 
-<details>
-<summary>历史版本</summary>
-
-| 版本 | 功能 |
-|------|------|
-| 🗄️ **v2.0** | SQLite 存储（比 CSV 快 400 倍）、智能优先级规则、macOS 废纸篓模式、GPS/相机元数据、自动分类 |
-| 🔍 **v3.0** | 缩放去重、跨格式去重（HEIC↔JPEG）、连拍检测、Photos.app 扫描、PyObjC 删除 |
-| 🖥️ **v3.1** | 交互式流程、HTML 缩略图预览（保留/移动标记）、撤销系统、iCloud/安卓/外置硬盘检测、15+ 语言 |
-| 📅 **v3.2** | 按日期（YYYY/MM）和按分类整理模式 |
-
 </details>
 
 ## 核心特性
 
 - 🎯 **SHA-256 精确去重** — 在整个图库中查找字节完全相同的重复文件
 - 👁️ **感知哈希相似度** — 使用 pHash 检测视觉相同的图像，支持模糊汉明距离阈值
+- 🧠 **Apple 质量向量检测** — 零依赖相似度检测，利用 Apple 预计算的 17 维 ML 向量（`--detect-apple-ql`）
 - 🔀 **跨格式去重** — 同一照片的 HEIC 和 JPEG 版本
 - 📐 **缩放去重** — 同一照片不同分辨率
 - 📸 **连拍检测** — 通过 SubSecTime 分组连拍照片
@@ -73,6 +75,7 @@
 - ⚡ **零配置** — 指向目录即可开始
 - 🔌 **多平台** — 兼容 Claude Code、Cursor、Windsurf、WorkBuddy 等
 - 🗄️ **可扩展** — SQLite 后端处理 10 万+ 照片
+- 📦 **零安装核心** — 所有可选依赖优雅降级；核心功能（SHA-256、Apple QL、元数据）仅需 Python 标准库
 
 ## 安装
 
@@ -164,12 +167,20 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 # 第 1 步：扫描（大型图库推荐 SQLite）
 python3 scripts/scan_photos.py --input /path/to/your/photos --output ./photo_index.db
 
+# 第 1b 步：快速扫描（零安装，无需任何依赖）
+python3 scripts/quick_scan.py --input /path/to/your/photos --output ./photo_index.db --dedup
+
 # 第 2 步：查找精确重复
 python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./duplicates_exact.csv
+python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./dups.txt --format human
 
 # 第 3 步（可选）：查找感知相似图像
 python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./duplicates_similar.csv
 python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv --detect-all
+
+# 第 3b 步（可选）：使用 Apple 零依赖 ML 向量查找相似照片
+python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar_apple.csv --detect-apple-ql
+python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar_apple.csv --detect-apple-ql --apple-ql-threshold 0.95
 
 # 第 4 步：生成智能移动计划
 python3 scripts/generate_move_plan.py \
@@ -203,6 +214,14 @@ python3 scripts/import_to_photos.py --source /Volumes/External/Photos --album "V
 
 # 从安卓 DCIM 导入
 python3 scripts/import_to_photos.py --source /Volumes/Android/DCIM --album "Android Import"
+
+# 半自动共享相册工作流（1 步手动拖拽）
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos \
+    --album "Vacation 2025" \
+    --share-to-album "Vacation 2025"
+
+# 列出共享相册（只读）
+python3 scripts/import_to_photos.py --show-shared-albums
 ```
 
 ### 一键交互式流程
@@ -279,10 +298,11 @@ python3 scripts/organize_photos.py --source /any --detect-sources
 
 | 脚本 | 用途 | 输入 | 输出 |
 |------|------|------|------|
+| `quick_scan.py` | 零安装快速扫描（仅标准库，SHA-256 + Apple QL） | 照片目录或 `.photoslibrary` | `.db` |
 | `scan_photos.py` | 遍历目录提取元数据 + GPS + 相机 | 照片视频目录 | `.db` 或 `.csv` |
 | `scan_photos_library.py` | 扫描 Photos.app 图库（读取 Photos.sqlite） | `.photoslibrary` 包 | `.db` 或 `.csv` |
 | `find_exact_duplicates.py` | 按 SHA-256 分组精确重复 | `.db` 或 `.csv` 索引 | `duplicates_exact.csv` |
-| `find_similar_photos.py` | 按 pHash 分组相似图像 | `.db` 或 `.csv` 索引 | `duplicates_similar.csv` |
+| `find_similar_photos.py` | 按 pHash、Apple QL、缩放、跨格式、连拍分组相似图像 | `.db` 或 `.csv` 索引 | `duplicates_similar.csv` |
 | `generate_move_plan.py` | 智能评分生成移动计划 | 重复 CSV + 索引 | `move_plan.csv` |
 | `apply_move_plan.py` | 执行移动计划 + 撤销支持 | `move_plan.csv` | `move_log.csv` |
 | `organize_photos.py` | 一键交互式流程 | 来源目录 | 完整流程输出 |
@@ -291,15 +311,26 @@ python3 scripts/organize_photos.py --source /any --detect-sources
 
 ## 依赖
 
-| 包 | 用途 |
-|----|------|
-| **Pillow** | 图像读取、尺寸、格式转换 |
-| **piexif** | EXIF 数据提取（日期、GPS、相机信息） |
-| **imagehash** | 感知哈希计算 |
+### 核心（零安装）
 
-仅 3 个核心依赖，无重型框架，SQLite 内置于 Python。
+| 内容 | 方式 |
+|------|------|
+| Python 3.9+ | 内置标准库：`hashlib`、`sqlite3`、`os`、`argparse`、`json`、`math` |
+| Apple QL 检测 | 读取 `ZCOMPUTEDASSETATTRIBUTES` 预计算向量 — 无需额外依赖 |
+| SHA-256 去重 | 使用标准库 `hashlib.sha256` |
 
-可选：**pillow-heif**（HEIC/HEIF 支持）、**pyobjc-framework-Photos**（Photos.app 删除）、**photoscript**（Photos.app 导入）
+### 可选（安装后增强功能）
+
+| 包 | 用途 | 缺少时的回退 |
+|----|------|-------------|
+| **Pillow** | 图像尺寸、格式检测 | 使用 Photos.app 元数据中的尺寸 |
+| **piexif** | EXIF 日期、GPS、相机信息 | 使用文件修改时间/Photos.app 日期 |
+| **imagehash** | 感知哈希（pHash）相似度 | Apple QL 检测（零依赖替代方案） |
+| **pillow-heif** | HEIC/HEIF 完整支持 | HEIC 文件跳过 pHash |
+| **photoscript** | 高级 Photos.app 导入 | osascript 回退（无额外依赖） |
+| **pyobjc-framework-Photos** | 底层 Photos.app 控制 | osascript 回退 |
+
+**所有可选依赖均优雅降级** — SnapTidy 打印警告并以缩减功能继续运行，不会崩溃，无硬性要求。
 
 ## 平台兼容性
 
