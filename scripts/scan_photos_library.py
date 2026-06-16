@@ -22,6 +22,7 @@ photo file. It only reads metadata.
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import sqlite3
@@ -31,21 +32,21 @@ from datetime import datetime, timedelta
 
 try:
     from PIL import Image
+    PILLOW_AVAILABLE = True
 except ImportError:
-    print("Pillow is required. Install with: pip install Pillow", file=sys.stderr)
-    sys.exit(1)
+    PILLOW_AVAILABLE = False
 
 try:
     import piexif
+    PIEXIF_AVAILABLE = True
 except ImportError:
-    print("piexif is required. Install with: pip install piexif", file=sys.stderr)
-    sys.exit(1)
+    PIEXIF_AVAILABLE = False
 
 try:
     import imagehash
+    IMAGEHASH_AVAILABLE = True
 except ImportError:
-    print("imagehash is required. Install with: pip install imagehash", file=sys.stderr)
-    sys.exit(1)
+    IMAGEHASH_AVAILABLE = False
 
 # Optional HEIC support
 try:
@@ -57,6 +58,29 @@ except ImportError:
 
 # Core Data epoch: 2001-01-01 00:00:00 UTC
 CORE_DATA_EPOCH = datetime(2001, 1, 1)
+
+# Apple pre-computed ML quality feature keys from ZCOMPUTEDASSETATTRIBUTES
+# These 17 scores are computed by Apple's Vision framework on import,
+# enabling zero-dependency similarity detection via cosine similarity.
+APPLE_QUALITY_KEYS = [
+    "ZPLEASANTCOMPOSITIONSCORE",
+    "ZPLEASANTLIGHTINGSCORE",
+    "ZPLEASANTPATTERNSCORE",
+    "ZFAILURESCORE",
+    "ZNOISESCORE",
+    "ZPLEASANTSYMMETRYSCORE",
+    "ZPLEASANTCOLORHUESCORE",
+    "ZPLEASANTWALLPAPERSCORE",
+    "ZHARMONIOUSCOLORSCORE",
+    "ZIMMERSIVENESSSCORE",
+    "ZINTERACTIONSCORE",
+    "ZPLEASANTPERSPECTIVESCORE",
+    "ZPLEASANTSHARPSCORE",
+    "ZPLEASANTPOSTPROCESSINGSCORE",
+    "ZTASTEFULLYBLURREDSCORE",
+    "ZWELLFRAMEDSUBJECTSCORE",
+    "ZWELLTIMEDSHOTSCORE",
+]
 
 IMAGE_EXTS = {
     "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif",
@@ -90,7 +114,9 @@ def compute_sha256(path: str) -> str:
 
 
 def compute_phash(path: str) -> str:
-    """Compute perceptual hash for an image."""
+    """Compute perceptual hash for an image. Returns '' if imagehash not installed."""
+    if not IMAGEHASH_AVAILABLE or not PILLOW_AVAILABLE:
+        return ""
     try:
         with Image.open(path) as img:
             return str(imagehash.average_hash(img.convert("RGB")))
@@ -99,7 +125,9 @@ def compute_phash(path: str) -> str:
 
 
 def get_image_size(path: str) -> tuple:
-    """Return (width, height) or ('', '')."""
+    """Return (width, height) or ('', ''). Returns ('', '') if Pillow not installed."""
+    if not PILLOW_AVAILABLE:
+        return "", ""
     try:
         with Image.open(path) as img:
             return img.width, img.height
@@ -108,7 +136,9 @@ def get_image_size(path: str) -> tuple:
 
 
 def get_exif_datetime(path: str) -> str:
-    """Extract DateTimeOriginal from EXIF."""
+    """Extract DateTimeOriginal from EXIF. Returns '' if piexif not installed."""
+    if not PIEXIF_AVAILABLE:
+        return ""
     try:
         exif_dict = piexif.load(path)
         dt = exif_dict.get("Exif", {}).get(piexif.ExifIFD.DateTimeOriginal)
@@ -130,7 +160,9 @@ def get_exif_datetime(path: str) -> str:
 
 
 def get_subsec_time(path: str) -> str:
-    """Extract SubSecTimeOriginal from EXIF."""
+    """Extract SubSecTimeOriginal from EXIF. Returns '' if piexif not installed."""
+    if not PIEXIF_AVAILABLE:
+        return ""
     try:
         exif_dict = piexif.load(path)
         subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTimeOriginal)
@@ -146,7 +178,9 @@ def get_subsec_time(path: str) -> str:
 
 
 def get_gps_coords(path: str) -> tuple:
-    """Extract GPS coordinates from EXIF."""
+    """Extract GPS coordinates from EXIF. Returns ('', '') if piexif not installed."""
+    if not PIEXIF_AVAILABLE:
+        return "", ""
     try:
         exif_dict = piexif.load(path)
         gps_ifd = exif_dict.get("GPS", {})
@@ -183,7 +217,9 @@ def get_gps_coords(path: str) -> tuple:
 
 
 def get_camera_info(path: str) -> tuple:
-    """Extract camera make/model from EXIF."""
+    """Extract camera make/model from EXIF. Returns ('', '') if piexif not installed."""
+    if not PIEXIF_AVAILABLE:
+        return "", ""
     try:
         exif_dict = piexif.load(path)
         zeroth = exif_dict.get("0th", {})
@@ -199,7 +235,9 @@ def get_camera_info(path: str) -> tuple:
 
 
 def has_exif_data(path: str) -> bool:
-    """Check if the file has meaningful EXIF data."""
+    """Check if the file has meaningful EXIF data. Returns False if piexif not installed."""
+    if not PIEXIF_AVAILABLE:
+        return False
     try:
         exif_dict = piexif.load(path)
         has_exif_section = bool(exif_dict.get("Exif"))
@@ -279,7 +317,8 @@ def _open_output_db(output_path: str) -> sqlite3.Connection:
             photos_cloud_state INTEGER DEFAULT 0,
             photos_albums TEXT DEFAULT '',
             photos_shared_albums TEXT DEFAULT '',
-            photos_icloud_locally_available INTEGER DEFAULT -1
+            photos_icloud_locally_available INTEGER DEFAULT -1,
+            photos_quality_vector TEXT DEFAULT ''
         )
     """)
     # Indexes
@@ -387,6 +426,36 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
     except sqlite3.OperationalError:
         pass
 
+    # Get Apple pre-computed ML quality scores (ZCOMPUTEDASSETATTRIBUTES)
+    # These enable zero-dependency similarity detection via cosine similarity
+    quality_map = {}  # asset_pk -> [17 floats]
+    try:
+        available_quality_cols = {row[1] for row in photos_db.execute(
+            "PRAGMA table_info(ZCOMPUTEDASSETATTRIBUTES)"
+        ).fetchall()}
+        quality_cols_present = [k for k in APPLE_QUALITY_KEYS if k in available_quality_cols]
+
+        if quality_cols_present:
+            cursor = photos_db.execute(f"""
+                SELECT ZASSET, {', '.join(quality_cols_present)}
+                FROM ZCOMPUTEDASSETATTRIBUTES
+            """)
+            for qrow in cursor:
+                asset_pk = qrow[0]
+                vector = []
+                for i, col in enumerate(quality_cols_present):
+                    val = qrow[i + 1]  # +1 because first column is ZASSET
+                    try:
+                        vector.append(float(val) if val is not None else 0.0)
+                    except (TypeError, ValueError):
+                        vector.append(0.0)
+                # Pad to 17 dimensions if some columns are missing
+                while len(vector) < 17:
+                    vector.append(0.0)
+                quality_map[asset_pk] = vector[:17]
+    except sqlite3.OperationalError:
+        pass
+
     # Get all assets (include ZUUID for iCloud lookup)
     cursor = photos_db.execute("""
         SELECT Z_PK, ZDIRECTORY, ZFILENAME, ZHEIGHT, ZWIDTH,
@@ -401,7 +470,8 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
     heic_count = 0
     scan_time = datetime.now().isoformat()
     stats = {"total": 0, "photo": 0, "video": 0, "screenshot": 0, "favorite": 0,
-             "skipped_not_found": 0, "icloud_only": 0, "in_shared_album": 0}
+             "skipped_not_found": 0, "icloud_only": 0, "in_shared_album": 0,
+             "with_quality_vector": 0}
 
     # Open output DB first (before the asset loop) so we can stream writes
     out_conn = _open_output_db(output_path)
@@ -479,6 +549,8 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             stats["photo"] += 1
         if shared_albums:
             stats["in_shared_album"] += 1
+        if quality_map.get(pk):
+            stats["with_quality_vector"] += 1
         if icloud_locally_available is False:
             stats["icloud_only"] += 1
 
@@ -562,6 +634,7 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             "photos_albums": album_str,
             "photos_shared_albums": shared_album_str,
             "photos_icloud_locally_available": icloud_locally_available,
+            "photos_quality_vector": json.dumps(quality_map.get(pk, [])),
         }
 
         entries.append(entry_dict)
@@ -595,12 +668,25 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         print(f"  In shared albums: {stats['in_shared_album']}")
     if stats['icloud_only'] > 0:
         print(f"  iCloud-only (not local): {stats['icloud_only']}")
+    if stats['with_quality_vector'] > 0:
+        print(f"  With Apple quality vector: {stats['with_quality_vector']} (zero-dep similarity)")
     if stats['skipped_not_found'] > 0:
         print(f"  Skipped (file not found / iCloud-only): {stats['skipped_not_found']}")
     if not HEIC_SUPPORT:
         if heic_count > 0:
             print(f"  ⚠️  {heic_count} HEIC files — install pillow-heif for full support:")
             print(f"      pip install pillow-heif")
+    if not PILLOW_AVAILABLE or not PIEXIF_AVAILABLE or not IMAGEHASH_AVAILABLE:
+        missing = []
+        if not PILLOW_AVAILABLE:
+            missing.append("Pillow")
+        if not PIEXIF_AVAILABLE:
+            missing.append("piexif")
+        if not IMAGEHASH_AVAILABLE:
+            missing.append("imagehash")
+        print(f"  ℹ️  Optional deps not installed: {', '.join(missing)}")
+        print(f"      pHash/EXIF/GPS data will be empty (Apple quality vector still available)")
+        print(f"      Install with: pip install {' '.join(missing)}")
     print(f"  Output: {output_path}")
 
 

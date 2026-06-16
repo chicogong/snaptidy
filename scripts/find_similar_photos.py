@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Find perceptually similar images — pHash, scaled duplicates, cross-format duplicates.
+"""Find perceptually similar images — pHash, scaled duplicates, cross-format duplicates, Apple quality vector.
 
-Reads the metadata index (SQLite DB) and groups similar images using three modes:
+Reads the metadata index (SQLite DB) and groups similar images using modes:
 
 1. **pHash** (default) — Groups by identical or fuzzy perceptual hash.
 2. **Scaled** (--detect-scaled) — Detects the same photo at different resolutions
@@ -10,6 +10,9 @@ Reads the metadata index (SQLite DB) and groups similar images using three modes
 3. **Cross-format** (--detect-cross-format) — Detects the same photo saved in
    different formats (e.g., iPhone HEIC original + JPEG export). Uses same
    dimensions + same aspect ratio + pHash similarity.
+4. **Apple quality vector** (--detect-apple-ql) — Uses Apple's pre-computed 17-dim
+   ML feature vectors from ZCOMPUTEDASSETATTRIBUTES for zero-dependency cosine
+   similarity detection. Only available for Photos.app library scans.
 """
 
 import argparse
@@ -22,9 +25,9 @@ from collections import defaultdict
 
 try:
     import imagehash
+    IMAGEHASH_AVAILABLE = True
 except ImportError:
-    print("imagehash is required. Install with: pip install imagehash", file=sys.stderr)
-    sys.exit(1)
+    IMAGEHASH_AVAILABLE = False
 
 
 # ---------------------------------------------------------------------------
@@ -574,6 +577,96 @@ def detect_all_db(index_path: str, phash_threshold: int = 0) -> list:
 # Output
 # ---------------------------------------------------------------------------
 
+def detect_apple_quality_similar_db(index_path: str, threshold: float = 0.92) -> list:
+    """Detect similar photos using Apple's pre-computed 17-dim ML quality vectors.
+
+    Uses cosine similarity between quality vectors from ZCOMPUTEDASSETATTRIBUTES.
+    This is a zero-dependency detection method (no Pillow/imagehash needed).
+    Only works for Photos.app library scans where quality vectors are available.
+
+    Args:
+        index_path: Path to SQLite metadata index
+        threshold: Cosine similarity threshold (0.0-1.0, default 0.92)
+    """
+    import json as _json
+
+    conn = sqlite3.connect(index_path)
+    cursor = conn.execute("""
+        SELECT file_path, photos_quality_vector
+        FROM photos
+        WHERE photos_quality_vector != '' AND photos_quality_vector IS NOT NULL
+    """)
+
+    entries_with_vector = []
+    for path, vector_json in cursor:
+        try:
+            vector = _json.loads(vector_json)
+            if len(vector) == 17 and any(v != 0.0 for v in vector):
+                entries_with_vector.append((path, vector))
+        except (ValueError, TypeError):
+            continue
+    conn.close()
+
+    if len(entries_with_vector) < 2:
+        return []
+
+    # Pairwise cosine similarity
+    visited = set()
+    groups = {}
+    group_id = 0
+
+    for i in range(len(entries_with_vector)):
+        path1, vec1 = entries_with_vector[i]
+        if path1 in visited:
+            continue
+
+        # Compute magnitude once
+        mag1 = math.sqrt(sum(v * v for v in vec1))
+        if mag1 == 0:
+            continue
+
+        for j in range(i + 1, len(entries_with_vector)):
+            path2, vec2 = entries_with_vector[j]
+            if path2 in visited:
+                continue
+
+            dot = sum(a * b for a, b in zip(vec1, vec2))
+            mag2 = math.sqrt(sum(v * v for v in vec2))
+            if mag2 == 0:
+                continue
+
+            similarity = dot / (mag1 * mag2)
+            if similarity >= threshold:
+                # Find existing group or create new one
+                found_group = None
+                for gid, members in groups.items():
+                    if path1 in members or path2 in members:
+                        found_group = gid
+                        break
+
+                if found_group is not None:
+                    groups[found_group].add(path1)
+                    groups[found_group].add(path2)
+                else:
+                    group_id += 1
+                    groups[group_id] = {path1, path2}
+
+                visited.add(path1)
+                visited.add(path2)
+
+    result = []
+    for gid, members in groups.items():
+        for path in sorted(members):
+            result.append({
+                "group_id": gid,
+                "phash": "",
+                "file_path": path,
+                "match_type": "apple_quality_vector",
+            })
+
+    return result
+
+
 def write_csv(entries, output_path):
     fieldnames = ["group_id", "phash", "file_path", "match_type"]
     with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
@@ -596,8 +689,12 @@ def main() -> None:
                         help="Detect cross-format duplicates (e.g., HEIC + JPEG of same photo)")
     parser.add_argument("--detect-bursts", action="store_true",
                         help="Detect burst photos using SubSecTime EXIF data")
+    parser.add_argument("--detect-apple-ql", action="store_true",
+                        help="Detect similar photos using Apple's pre-computed ML quality vectors (zero-dependency)")
     parser.add_argument("--detect-all", action="store_true",
-                        help="Run all detection methods (pHash + scaled + cross-format + bursts)")
+                        help="Run all detection methods (pHash + scaled + cross-format + bursts + Apple QL)")
+    parser.add_argument("--apple-ql-threshold", type=float, default=0.92,
+                        help="Cosine similarity threshold for Apple quality vector detection (default: 0.92)")
     parser.add_argument("--scaled-threshold", type=int, default=SCALED_PHASH_THRESHOLD,
                         help=f"Hamming distance threshold for scaled duplicate verification (default: {SCALED_PHASH_THRESHOLD})")
     parser.add_argument("--cross-format-threshold", type=int, default=CROSS_FORMAT_PHASH_THRESHOLD,
@@ -617,19 +714,24 @@ def main() -> None:
 
     # Determine which detection methods to run
     run_all = args.detect_all
-    run_phash = not (args.detect_scaled or args.detect_cross_format or args.detect_bursts) or run_all
+    run_phash = not (args.detect_scaled or args.detect_cross_format or args.detect_bursts or args.detect_apple_ql) or run_all
     run_scaled = args.detect_scaled or run_all
     run_cross = args.detect_cross_format or run_all
     run_bursts = args.detect_bursts or run_all
+    run_apple_ql = args.detect_apple_ql or run_all
 
     all_results = []
     method_stats = {}
 
     if run_phash:
-        phash_results = group_by_phash_db(index_path, threshold=args.threshold)
-        all_results.extend(phash_results)
-        n = len(set(e["group_id"] for e in phash_results)) if phash_results else 0
-        method_stats["pHash"] = (len(phash_results), n)
+        if not IMAGEHASH_AVAILABLE:
+            print("⚠️  imagehash not installed — skipping pHash detection. Install with: pip install imagehash", file=sys.stderr)
+            method_stats["pHash"] = (0, 0)
+        else:
+            phash_results = group_by_phash_db(index_path, threshold=args.threshold)
+            all_results.extend(phash_results)
+            n = len(set(e["group_id"] for e in phash_results)) if phash_results else 0
+            method_stats["pHash"] = (len(phash_results), n)
 
     if run_scaled:
         scaled_results = detect_scaled_duplicates_db(index_path, phash_threshold=args.scaled_threshold)
@@ -648,6 +750,13 @@ def main() -> None:
         all_results.extend(burst_results)
         n = len(set(e["group_id"] for e in burst_results)) if burst_results else 0
         method_stats["Burst"] = (len(burst_results), n)
+
+    if run_apple_ql:
+        apple_ql_results = detect_apple_quality_similar_db(
+            index_path, threshold=args.apple_ql_threshold)
+        all_results.extend(apple_ql_results)
+        n = len(set(e["group_id"] for e in apple_ql_results)) if apple_ql_results else 0
+        method_stats["Apple QL"] = (len(apple_ql_results), n)
 
     # Re-number group IDs
     if all_results:
