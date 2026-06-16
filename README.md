@@ -33,6 +33,8 @@
 
 Your photo library grows fast — iPhone shots, iCloud exports, Android transfers, WeChat saves, old backups, and screenshots pile up over time. Existing tools like [Sorty](https://github.com/nicoschmdt/sorty), [Tidy](https://github.com/nicoschmdt/tidy), and [Hazelnut](https://github.com/josephearl/hazelnut) are standalone apps you install and configure. **SnapTidy takes a different approach**: it's an AI assistant skill. You describe what you want in natural language, and it handles the rest.
 
+**iPhone users**: You don't need iCloud sync to organize your photos. Connect your iPhone via USB and SnapTidy can scan the Photos.app library directly, or use Finder to sync photos to a local folder first. Tools like [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) also allow direct USB access to your iPhone's DCIM without iCloud.
+
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
 
 ## What's New in v3.3
@@ -121,15 +123,7 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 
 ## How It Works
 
-```
-┌─────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│  Scan   │────>│  Find Dupes  │────>│  Gen Plan    │────>│ Review & Apply│
-│         │     │              │     │             │     │              │
-│ Photos  │     │ SHA-256 +    │     │ Smart move  │     │ You confirm, │
-│ & Videos│     │ pHash ±thr   │     │ plan (CSV)  │     │ then it moves │
-└─────────┘     └──────────────┘     └─────────────┘     └──────────────┘
-  Read-only        Read-only           Read-only          Move/Trash-only
-```
+![SnapTidy Pipeline](assets/pipeline.svg)
 
 1. **Scan** — Walk through your photo/video directory, extract metadata (size, SHA-256, EXIF date, GPS, camera info, dimensions, perceptual hash, auto-category, folder tag), and write to SQLite (recommended) or CSV
 2. **Find Duplicates** — Group files by exact hash (SHA-256) and perceptual hash (pHash), with optional fuzzy threshold

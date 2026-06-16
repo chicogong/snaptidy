@@ -33,6 +33,8 @@
 
 你的照片库增长很快 — iPhone 拍摄、iCloud 导出、安卓传输、微信保存、旧备份和截图日积月累。现有工具如 [Sorty](https://github.com/nicoschmdt/sorty)、[Tidy](https://github.com/nicoschmdt/tidy) 和 [Hazelnut](https://github.com/josephearl/hazelnut) 是需要安装配置的独立应用。**SnapTidy 采用不同方式**：它是一个 AI 助手技能，你用自然语言描述需求，它自动处理。
 
+**iPhone 用户**：整理照片不需要 iCloud 同步到电脑。通过 USB 连接 iPhone，SnapTidy 可以直接扫描 Photos.app 图库，或者先用 Finder 将照片同步到本地文件夹。使用 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 等工具还可以直接通过 USB 访问 iPhone 的 DCIM 目录，无需 iCloud。
+
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
 
 ## v3.3 新功能
@@ -121,15 +123,7 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 
 ## 工作原理
 
-```
-┌─────────┐     ┌──────────────┐     ┌─────────────┐     ┌──────────────┐
-│  扫描   │────>│  查找重复    │────>│  生成计划    │────>│  审核并执行   │
-│         │     │              │     │             │     │              │
-│ 照片    │     │ SHA-256 +    │     │ 智能移动    │     │ 你确认后      │
-│ 和视频  │     │ pHash ±阈值  │     │ 计划 (CSV)  │     │ 再执行移动    │
-└─────────┘     └──────────────┘     └─────────────┘     └──────────────┘
-  只读              只读                只读               仅移动/废纸篓
-```
+![SnapTidy Pipeline](assets/pipeline.svg)
 
 1. **扫描** — 遍历照片/视频目录，提取元数据（大小、SHA-256、EXIF 日期、GPS、相机信息、尺寸、感知哈希、自动分类、文件夹标签），写入 SQLite（推荐）或 CSV
 2. **查找重复** — 按精确哈希（SHA-256）和感知哈希（pHash）分组，支持模糊阈值
