@@ -1,14 +1,33 @@
 # SnapTidy
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![macOS](https://img.shields.io/badge/Platform-macOS-black.svg)](https://www.apple.com/macos)
-[![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-2.0-green.svg)](https://github.com/chicogong/snaptidy)
+[English](README.md) | [简体中文](README.zh-CN.md)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
+[![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
+[![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
+[![Version](https://img.shields.io/badge/Version-3.3-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
->
-> 🇨🇳 整理照片去重 · 🇯🇵 重複写真整理 · 🇰🇷 중복 사진 정리 · 🇷🇺 Удаление дубликатов
+
+## Table of Contents
+
+- [Why SnapTidy?](#why-snaptidy)
+- [What's New](#whats-new-in-v33)
+- [Key Features](#key-features)
+- [Installation](#installation)
+- [How It Works](#how-it-works)
+- [Safety Guarantees](#safety-guarantees)
+- [Quick Start](#quick-start)
+- [Smart Priority Rules](#smart-priority-rules)
+- [Auto-Categorization](#auto-categorization-15-languages)
+- [Storage & Performance](#storage--performance)
+- [Supported Formats](#supported-formats)
+- [Scripts Reference](#scripts-reference)
+- [Requirements](#requirements)
+- [Platform Compatibility](#platform-compatibility)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Why SnapTidy?
 
@@ -16,30 +35,42 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
 
-## What's New in v2.0
+## What's New in v3.3
 
 | Feature | Description |
 |---------|-------------|
-| 🗄️ **SQLite Storage** | 400x faster than CSV for 100k+ photos. Data stays local, no context bloat |
-| 🎯 **Smart Priority Rules** | Multi-factor scoring: resolution, EXIF completeness, format, category, folder preference |
-| 🗑️ **macOS Trash Mode** | Move duplicates to Trash (recoverable via Finder → Put Back) instead of review folder |
-| 📍 **GPS & Camera Metadata** | Extract latitude/longitude, camera make/model, EXIF completeness |
-| 🏷️ **Auto-Categorization** | Detect photo, screenshot, WeChat, burst, and video categories automatically |
-| 🔍 **Fuzzy pHash Matching** | `--threshold` parameter for Hamming distance near-duplicate detection |
-| 📂 **Folder Priority** | `--prefer-folder` lets you specify which folders' photos to keep |
-| 📱 **Android/WeChat Support** | Detects `mmexport`, `wx_camera_`, `microMsg` filename patterns |
-| 🌐 **Multilingual Detection** | Screenshots detected in Chinese, Japanese, Korean, Russian, and English |
+| 📱 **Import to Photos.app** | Import from external drives/Android with automatic dedup |
+| 👥 **Shared Album Reading** | Read shared album info from Photos.sqlite |
+| ☁️ **iCloud Sync Awareness** | Detect iCloud-only files and download status |
+| 🔄 **Checkpoint & Resume** | Import workflow supports checkpoint resume on interruption |
+| 💾 **Zero Data Loss** | Streaming SQLite writes — commit each entry immediately |
+
+<details>
+<summary>Previous versions</summary>
+
+| Version | Features |
+|---------|----------|
+| 🗄️ **v2.0** | SQLite storage (400x faster), smart priority rules, macOS Trash mode, GPS & camera metadata, auto-categorization |
+| 🔍 **v3.0** | Scaled dedup, cross-format dedup (HEIC↔JPEG), burst detection, Photos.app scan, PyObjC deletion |
+| 🖥️ **v3.1** | Interactive workflow, HTML preview with KEEP/MOVE badges, undo system, iCloud/Android/external drive detection, 15+ languages |
+| 📅 **v3.2** | By-date (YYYY/MM) and by-category organize modes |
+
+</details>
 
 ## Key Features
 
 - 🎯 **SHA-256 Exact Dedup** — Find byte-perfect duplicate files across your entire library
-- 👁️ **Perceptual Hash Similarity** — Detect visually identical images using average hash (pHash), with fuzzy Hamming distance threshold
-- 📋 **Rich Metadata Index** — Extract file size, EXIF dates, GPS coordinates, camera info, dimensions, category, and hashes into SQLite or CSV
+- 👁️ **Perceptual Hash Similarity** — Detect visually identical images using pHash, with fuzzy Hamming distance threshold
+- 🔀 **Cross-Format Dedup** — HEIC + JPEG of the same photo
+- 📐 **Scaled Dedup** — Same photo at different resolutions
+- 📸 **Burst Detection** — Group burst photos via SubSecTime
+- 📋 **Rich Metadata Index** — Extract file size, EXIF dates, GPS, camera info, dimensions, category, hashes into SQLite or CSV
 - 🛡️ **Safety-First Design** — Read-only scanning, move-only operations, Trash mode with Finder recovery, CSV-based audit trail
+- 💾 **Zero Data Loss** — Streaming SQLite writes with per-entry commit
 - 💬 **Conversation-Driven** — Interact through your AI assistant; no GUI or config files needed
-- ⚡ **Zero Config** — Point at a directory and go. Works with any macOS photo/video folder
+- ⚡ **Zero Config** — Point at a directory and go
 - 🔌 **Multi-Platform** — Works with Claude Code, Cursor, Windsurf, WorkBuddy, OpenClaw, and more
-- 🗄️ **Scalable** — SQLite backend handles 100k+ photos without breaking a sweat
+- 🗄️ **Scalable** — SQLite backend handles 100k+ photos
 
 ## Installation
 
@@ -49,19 +80,14 @@ Just tell your AI assistant:
 
 > Install this skill: https://github.com/chicogong/snaptidy
 
-The AI will automatically clone the repo, install dependencies, and configure the skill.
-
 ### Option 2: CLI Install
 
 ```bash
-# Works with 45+ AI platforms (Claude Code, Cursor, Windsurf, etc.)
+# Works with 45+ AI platforms
 npx skills add chicogong/snaptidy
 
-# Or via ClawHub (OpenClaw ecosystem)
+# Or via ClawHub
 clawhub install snaptidy
-
-# Or via SkillHub (Tencent ecosystem)
-skillhub install snaptidy
 ```
 
 ### Option 3: Manual Install
@@ -85,27 +111,12 @@ cp -r snaptidy/.cursor/rules/snaptidy.mdc .cursor/rules/
 </details>
 
 <details>
-<summary>Windsurf</summary>
-
-```bash
-git clone https://github.com/chicogong/snaptidy.git
-cp -r snaptidy/.windsurf/rules/snaptidy.md .windsurf/rules/
-```
-</details>
-
-<details>
 <summary>WorkBuddy</summary>
 
 ```bash
 git clone https://github.com/chicogong/snaptidy.git ~/.workbuddy/skills/snaptidy
 cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 ```
-</details>
-
-<details>
-<summary>GitHub Copilot</summary>
-
-Copy `.github/copilot-instructions.md` to your project's `.github/` directory.
 </details>
 
 ## How It Works
@@ -133,18 +144,17 @@ Copy `.github/copilot-instructions.md` to your project's `.github/` directory.
 | macOS Trash mode | Use `--mode trash` to move to Trash — recoverable via Finder → Put Back |
 | Human review required | Move plans are CSV files you can inspect in any spreadsheet app |
 | Full audit trail | Every move is logged to `move_log.csv` with source, destination, status, and reason |
+| Zero data loss | Streaming SQLite writes with per-entry commit — crash loses at most one entry |
 | Skip existing files | If a destination file already exists, the move is skipped automatically |
 | Photos Library protection | `.photoslibrary` and `.photolibrary` directories are never entered |
 | Backup-aware | Directories named `Original_Backup`, `.trashes`, etc. are automatically skipped |
 | Smart priorities | Multi-factor scoring ensures the best-quality photo is always kept |
 
-> See [`references/safety.md`](references/safety.md) for detailed safety guidelines.
-
 ## Quick Start
 
 ### Prerequisites
 
-- **macOS** (tested on macOS 13+)
+- **macOS** (tested on 13+)
 - **Python 3.9+**
 - **Full Disk Access** enabled for your terminal (System Settings → Privacy & Security → Full Disk Access)
 
@@ -157,58 +167,69 @@ Tell your AI assistant what you want:
 Or run the scripts directly:
 
 ```bash
-# Step 1: Scan your photo library (SQLite recommended for large libraries)
-python3 scripts/scan_photos.py \
-    --input /path/to/your/photos \
-    --output ./photo_index.db
+# Step 1: Scan (SQLite recommended for large libraries)
+python3 scripts/scan_photos.py --input /path/to/your/photos --output ./photo_index.db
 
 # Step 2: Find exact duplicates
-python3 scripts/find_exact_duplicates.py \
-    --index ./photo_index.db \
-    --output ./duplicates_exact.csv
+python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./duplicates_exact.csv
 
 # Step 3 (Optional): Find perceptually similar images
-# Exact pHash match (default)
-python3 scripts/find_similar_photos.py \
-    --index ./photo_index.db \
-    --output ./duplicates_similar.csv
-
-# Fuzzy match with Hamming distance threshold (catches near-duplicates)
-python3 scripts/find_similar_photos.py \
-    --index ./photo_index.db \
-    --output ./duplicates_similar.csv \
-    --threshold 5
+python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./duplicates_similar.csv
+python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv --detect-all
 
 # Step 4: Generate a smart move plan
-# Default: quality strategy — keep highest resolution, best EXIF, largest file
-python3 scripts/generate_move_plan.py \
-    --duplicates ./duplicates_exact.csv \
-    --index ./photo_index.db \
-    --plan ./move_plan.csv \
-    --target-root /path/to/your/photos
-
-# Keep files from preferred folders (e.g., camera originals over downloads)
 python3 scripts/generate_move_plan.py \
     --duplicates ./duplicates_exact.csv \
     --index ./photo_index.db \
     --plan ./move_plan.csv \
     --target-root /path/to/your/photos \
-    --prefer-folder "DCIM" --prefer-folder "相机"
+    --prefer-folder "DCIM" --strategy quality
 
-# Choose a strategy: quality (default), oldest, newest, folder
-python3 scripts/generate_move_plan.py \
-    --duplicates ./duplicates_exact.csv \
+# Step 5: Preview with HTML thumbnails (optional but recommended)
+python3 scripts/generate_preview.py \
+    --duplicates ./duplicates_similar.csv \
     --index ./photo_index.db \
-    --plan ./move_plan.csv \
-    --target-root /path/to/your/photos \
-    --strategy oldest
+    --output ./preview.html
 
-# Step 5: Review move_plan.csv, then apply
-# Move to review folder (safe, files stay on disk)
-python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode move
-
-# Move to macOS Trash (recoverable via Finder → Put Back)
+# Step 6: Review move_plan.csv, then apply
 python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
+
+# Step 7: Undo if needed
+python3 scripts/apply_move_plan.py --plan ./move_plan.csv --undo
+```
+
+### Import to Photos.app
+
+```bash
+# Dry-run: preview what would be imported
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos --dry-run
+
+# Import all unique photos (duplicates skipped automatically)
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos --album "Vacation 2025"
+
+# Import from Android DCIM
+python3 scripts/import_to_photos.py --source /Volumes/Android/DCIM --album "Android Import"
+```
+
+### One-Command Interactive Workflow
+
+```bash
+# Interactive — asks preferences step by step
+python3 scripts/organize_photos.py --source ~/Pictures/Export --interactive
+
+# Non-interactive with dry-run
+python3 scripts/organize_photos.py \
+    --source ~/Pictures/Export --dedup-method all \
+    --strategy quality --trash-mode trash --dry-run
+
+# Organize by date into YYYY/MM folders
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-date --dry-run
+
+# Organize by category (01_Photos, 02_Screenshots, 03_WeChat, etc.)
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category --dry-run
+
+# Detect connected Android devices and external drives
+python3 scripts/organize_photos.py --source /any --detect-sources
 ```
 
 ## Smart Priority Rules
@@ -223,24 +244,18 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | Format (RAW +20, HEIC +10) | Medium | Better format = better quality |
 | Category (photo +15, screenshot -20, wechat -10) | Medium | Real photos over screenshots |
 | Folder preference | Configurable (+50) | User-specified priority folders |
+| Photos.app favorite | High (+50) | Never move favorited photos |
 
-**Strategies** (`--strategy`):
+**Strategies** (`--strategy`): `quality` (default), `oldest`, `newest`, `folder`
 
-| Strategy | Behavior |
-|----------|----------|
-| `quality` (default) | Keep the highest-scoring file based on multi-factor scoring |
-| `oldest` | Keep the oldest file (by EXIF date, then mtime) |
-| `newest` | Keep the newest file |
-| `folder` | Keep the file from the highest-priority folder (`--prefer-folder` order) |
-
-## Auto-Categorization
+## Auto-Categorization (15+ Languages)
 
 | Category | Detected by |
 |----------|------------|
 | photo | Default for camera photos |
 | screenshot | "screenshot", "截图", "截屏", "スクリーンショット", "스크린샷", "скриншот" |
 | wechat | "mmexport", "wx_camera_", "microMsg", "WeiXin" |
-| burst | "_HDR", "_burst", "连拍" |
+| burst | "_HDR", "_burst", "连拍", "連拍", "버스트" |
 | video | Video file extensions |
 
 ## Storage & Performance
@@ -250,7 +265,13 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | **SQLite** (.db) | 100k+ photos | 400x faster queries | Data stays in local DB, no context bloat |
 | **CSV** (.csv) | Small libraries (<10k) | Fine for small sets | CSV content may bloat AI context |
 
-SQLite is strongly recommended for any real photo library. It stores all metadata locally in a single `.db` file, and queries use indexes for instant lookups. CSV is available as a fallback.
+### Benchmarks (MacBook Pro M3 Pro)
+
+| Photos | Scan | Exact | Similar (all) | Plan | Total |
+|--------|------|-------|---------------|------|-------|
+| 1K | 1.3s | 0.06s | 1.2s | 0.1s | ~3s |
+| 10K | 12s | 0.07s | 49s | 0.3s | ~66s |
+| 50K | 58s | 0.13s | ~8min | 0.5s | ~10min |
 
 ## Supported Formats
 
@@ -264,11 +285,15 @@ SQLite is strongly recommended for any real photo library. It stores all metadat
 
 | Script | Purpose | Input | Output |
 |--------|---------|-------|--------|
-| `scan_photos.py` | Walk directory, extract metadata + GPS + camera info | Photo/video directory | `.db` (SQLite) or `.csv` |
+| `scan_photos.py` | Walk directory, extract metadata + GPS + camera | Photo/video directory | `.db` or `.csv` |
+| `scan_photos_library.py` | Scan Photos.app library (reads Photos.sqlite) | `.photoslibrary` bundle | `.db` or `.csv` |
 | `find_exact_duplicates.py` | Group byte-identical files by SHA-256 | `.db` or `.csv` index | `duplicates_exact.csv` |
 | `find_similar_photos.py` | Group visually identical images by pHash | `.db` or `.csv` index | `duplicates_similar.csv` |
 | `generate_move_plan.py` | Smart priority scoring, propose which to move | Duplicates CSV + index | `move_plan.csv` |
-| `apply_move_plan.py` | Execute move plan (move or Trash mode) | `move_plan.csv` | `move_log.csv` |
+| `apply_move_plan.py` | Execute move plan (move or Trash mode) + undo | `move_plan.csv` | `move_log.csv` |
+| `organize_photos.py` | One-command interactive pipeline | Source directory | Full pipeline output |
+| `import_to_photos.py` | Import to Photos.app with dedup | Source directory | Import report JSON |
+| `generate_preview.py` | HTML thumbnail preview | Duplicates CSV + index | `preview.html` |
 
 ## Requirements
 
@@ -276,32 +301,11 @@ SQLite is strongly recommended for any real photo library. It stores all metadat
 |---------|---------|
 | **Pillow** | Image reading, dimensions, format conversion |
 | **piexif** | EXIF data extraction (dates, GPS, camera info) |
-| **imagehash** | Perceptual hash computation (average hash) |
+| **imagehash** | Perceptual hash computation |
 
-Only 3 dependencies. No heavy frameworks. SQLite is built into Python.
+Only 3 core dependencies. No heavy frameworks. SQLite is built into Python.
 
-## Language Support
-
-SnapTidy handles filenames and paths in **CJK languages** (Chinese, Japanese, Korean) and other Unicode scripts natively. All CSV output uses UTF-8 with BOM for proper display in Excel and Numbers.
-
-Screenshot detection works across languages:
-
-| Language | Detected patterns |
-|----------|-------------------|
-| English | `screenshot`, `screen shot` |
-| Chinese | `截图`, `截屏` |
-| Japanese | `スクリーンショット` |
-| Korean | `스크린샷` |
-| Russian | `скриншот` |
-
-WeChat image detection:
-
-| Pattern | Source |
-|---------|--------|
-| `mmexport` | WeChat exported photos |
-| `wx_camera_` | WeChat in-app camera |
-| `microMsg` | WeChat internal storage |
-| `WeiXin` | WeChat folder name |
+Optional: **pillow-heif** (HEIC/HEIF support), **pyobjc-framework-Photos** (Photos.app deletion), **photoscript** (Photos.app import)
 
 ## Platform Compatibility
 
@@ -310,22 +314,24 @@ WeChat image detection:
 | Claude Code | `CLAUDE.md` | `~/.claude/skills/snaptidy/` |
 | Cursor | `.cursor/rules/snaptidy.mdc` | Project `.cursor/rules/` |
 | Windsurf | `.windsurf/rules/snaptidy.md` | Project `.windsurf/rules/` |
-| GitHub Copilot | `.github/copilot-instructions.md` | Project `.github/` |
 | WorkBuddy | `SKILL.md` | `~/.workbuddy/skills/snaptidy/` |
 | OpenClaw | `SKILL.md` + `clawhub.yaml` | `~/.openclaw/skills/snaptidy/` |
 | Any AI agent | `AGENTS.md` | Project root |
 
 ## Contributing
 
-Contributions are welcome! Some areas where help is especially appreciated:
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
+Some areas where help is especially appreciated:
 
 - **Date-based reorganization** — Sort photos into year/month folders based on EXIF dates
 - **Video deduplication** — Key-frame hashing for video files using ffmpeg/opencv
-- **iCloud integration** — Smart detection of iCloud-evicted files
 - **Cross-platform support** — Extend beyond macOS to Linux and Windows
-- **External drive workflows** — Backup-to-drive and space management automation
+- **Location-based organize** — Reverse geocoding for GPS metadata
 
-Feel free to open an issue or submit a pull request.
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a history of notable changes.
 
 ## License
 

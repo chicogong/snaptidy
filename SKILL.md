@@ -2,10 +2,8 @@
 name: snaptidy
 version: 3.3.0
 description: |
-  AI-powered photo & video organizer for macOS. Scan libraries, detect duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format), organize by date/category, preview with HTML thumbnails, and undo if needed — without ever deleting your originals. Import from external drives/Android into Photos.app with dedup.
-  Use this skill when you need to: scan and tidy large photo/video folders, find duplicate photos, deduplicate archives, organize a messy photo library, generate a dedup report for human review, preview duplicates before acting, undo a move operation, import photos from external drives/Android into Photos.app with dedup, check iCloud sync status, read shared album info.
-  照片视频整理去重工具，支持SHA-256精确去重、pHash感知哈希、缩放去重、跨格式去重（HEIC↔JPEG）、连拍检测，按日期/分类整理，HTML缩略图预览，一键撤销操作，从外置硬盘/安卓手机导入Photos.app并去重，iCloud同步状态检测，共享相册读取，Android/外置硬盘扫描，交互式整理流程，15+语言识别，智能优先级规则，Photos.app数据库直读，PyObjC安全删除，SQLite存储10万+照片。
-  Trigger phrases: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "scan for duplicates", "import photos to Photos app", "import from Android", "整理照片", "去重", "整理相册", "导入照片", "重複写真削除", "写真整理", "사진 정리", "중복 사진", "organiser mes photos", "Fotos organisieren", "organizar fotos", "정리 사진"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst detection. Scan file folders or Photos.app library directly. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, iCloud sync awareness, 15+ language auto-categorization, smart priority rules, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -29,6 +27,7 @@ metadata:
 ## When to Use
 
 Invoke this skill when the user asks to:
+
 - Organize or tidy up photo/video folders on macOS
 - Find and remove duplicate photos
 - Scan a photo library for duplicates (file folders OR Photos.app library)
@@ -40,21 +39,14 @@ Invoke this skill when the user asks to:
 - Check iCloud download status of photos
 - Scan Android phone or external drive for photos
 - Run an interactive organize workflow
-- Prepare a clean photo archive
-- Free up disk space by finding and moving duplicates
-- Consolidate photos from Android/iPhone/external drives
 - Import organized photos into Photos.app from external drives or Android
 - Deduplicate before importing to avoid duplicates in Photos.app
 - Read shared album information from Photos.sqlite
 - Check iCloud sync and local availability status
-- 整理照片、去重、清理相册
-- 重複写真を削除・整理する
-- 사진 정리, 중복 사진 찾기
-- Organiser mes photos, supprimer les doublons
-- Fotos organisieren, Duplikate finden
-- Organizar fotos, eliminar duplicados
 
-## Safety Rules (MANDATORY)
+**Multilingual triggers:** 整理照片、去重、整理相册 · 重複写真を削除・整理する · 사진 정리, 중복 사진 찾기 · Organiser mes photos, supprimer les doublons · Fotos organisieren, Duplikate finden · Organizar fotos, eliminar duplicados
+
+## Safety Rules — MANDATORY
 
 - **NEVER delete originals** — all scripts are read-only by default. `apply_move_plan.py` only moves files, never deletes.
 - **NEVER permanently delete** — use macOS Trash mode (`--mode trash`) or move to review folder. Users can recover from Trash via Finder.
@@ -62,7 +54,7 @@ Invoke this skill when the user asks to:
 - **Operate only inside user-provided paths** — never scan system directories or disk roots.
 - **Respect external backups** — skip directories named `Original_Backup` or similar.
 - **Ask before moving** — ALWAYS present the move plan and get user confirmation before running `apply_move_plan.py`.
-- **Ask which folder to prioritize** — when duplicates span multiple folders, ask the user which folder's photos they prefer to keep.
+- **Ask which folder to prioritize** — when duplicates span multiple folders, ask which folder's photos to keep.
 - **Ask about trash vs move** — offer the user a choice: move to review folder or move to macOS Trash (recoverable).
 - **Fast/Safe path confirmation** — 1-9 moves: brief `[Y/n]` confirmation. 10+ moves: require explicit `"yes"` to proceed. Always present summary stats before confirming.
 - **Undo support** — always inform the user that `--undo` is available after a move operation. Undo records auto-expire after 30 days.
@@ -141,7 +133,7 @@ python3 scripts/find_similar_photos.py --index photo_index.db --output burst.csv
 python3 scripts/find_similar_photos.py --index photo_index.db --output similar.csv --threshold 5
 ```
 
-**Detection types explained:**
+**Detection types:**
 
 | Type | Flag | Detects | Example |
 |------|------|---------|---------|
@@ -218,7 +210,7 @@ python3 scripts/apply_move_plan.py --plan move_plan.csv --mode move
 # Move to macOS Trash (recoverable via Finder > Put Back)
 python3 scripts/apply_move_plan.py --plan move_plan.csv --mode trash
 
-# Remove from Photos.app via PyObjC (keeps library consistent)
+# Remove from Photos.app via PyObjc (keeps library consistent)
 python3 scripts/apply_move_plan.py --plan move_plan.csv --mode photos-trash
 ```
 
@@ -261,7 +253,7 @@ python3 scripts/organize_photos.py \
 When using `--interactive`, the workflow asks:
 
 1. **Source type** — folder on disk or Photos.app library
-2. **Organize mode** — dedup / by-date / by-location / by-category (currently only dedup is implemented)
+2. **Organize mode** — dedup / by-date / by-location / by-category
 3. **Dedup method** — exact / phash / scaled / cross-format / burst / all
 4. **Strategy** — quality / oldest / newest / folder
 5. **Preferred folder** — which folder's photos to keep (e.g., DCIM, 相册)
@@ -320,8 +312,8 @@ python3 scripts/import_to_photos.py --source /Volumes/Android/DCIM --album "Andr
 
 ### Import Workflow
 
-1. **Scan source** — recursively find all media files (jpg, png, heic, mov, mp4, etc.)
-2. **Build library index** — read Photos.sqlite to build SHA-256 index of existing library
+1. **Scan source** — recursively find all media files
+2. **Build library index** — read Photos.sqlite to build SHA-256 index
 3. **Dedup** — compare source file SHA-256 against library; skip duplicates
 4. **Import** — import unique files via photoscript / osascript / ScriptingBridge
 5. **Report** — generate JSON report with import summary, duplicates found, and errors
@@ -334,18 +326,6 @@ python3 scripts/import_to_photos.py --source /Volumes/Android/DCIM --album "Andr
 | photoscript | `--method photoscript` | `pip install photoscript` | Medium | Most reliable |
 | osascript | `--method osascript` | None (macOS built-in) | Slow | No extra deps |
 | ScriptingBridge | `--method scriptingbridge` | `pip install pyobjc` | Medium | Low-level PyObjC |
-
-### External Source Detection
-
-```bash
-# Detect connected Android phones and external drives
-python3 scripts/import_to_photos.py --detect-sources
-```
-
-Detects:
-- **Android phones** via DCIM folders on mounted volumes (Samsung, Pixel, OnePlus, Xiaomi, Huawei, etc.)
-- **External drives** with Photos, Pictures, or Import folders
-- **Camera SD cards** via DCIM folders
 
 ### Shared Album Support
 
@@ -360,7 +340,7 @@ Reads shared album information from Photos.sqlite:
 - Public URL status
 - Asset count
 
-**⚠️ Limitation**: Shared albums are **read-only** via AppleScript/ScriptingBridge. You cannot programmatically add photos to shared albums. To add photos:
+**Limitation**: Shared albums are **read-only** via AppleScript/ScriptingBridge. You cannot programmatically add photos to shared albums. To add photos:
 1. Import to a regular album first
 2. Manually drag photos from the regular album to the shared album in Photos.app
 
@@ -455,6 +435,7 @@ Algorithm:
 - **SQLite** (.db) — Recommended. Handles 100k+ photos efficiently. Query speed 400x faster than CSV for large libraries. Data stays local, no context bloat.
 - **CSV** (.csv) — Fallback for small libraries. Compatible with Excel/Numbers.
 - **HTML Preview** — Standalone HTML file with embedded thumbnails. Open in any browser.
+- **Zero data loss** — Scan writes each entry to SQLite immediately with WAL mode + `synchronous=NORMAL`. A crash loses at most the entry currently being computed.
 
 ### Benchmarks (MacBook Pro M3 Pro)
 

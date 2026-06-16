@@ -11,6 +11,7 @@ This project is an AI skill for organizing photos/videos on macOS.
 - For Photos.app libraries, use `scan_photos_library.py` (not `scan_photos.py`)
 - Always confirm before applying moves: Fast path (1-9) or Safe path (10+)
 - Always inform user about `--undo` after applying moves
+- Scan writes commit each entry immediately — zero data loss on crash
 
 ## Running the Pipeline
 
@@ -89,35 +90,36 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category
 |------|-------------|
 | `--output .db` vs `.csv` | SQLite (fast, recommended) vs CSV (Excel-compatible) |
 | `--threshold N` | pHash Hamming distance (0=exact, 5=fuzzy) |
-| `--detect-all` | Run all detection methods (pHash + scaled + cross-format + burst) |
-| `--detect-scaled` | Detect scaled duplicates (same photo, different resolution) |
+| `--detect-all` | Run all detection methods |
+| `--detect-scaled` | Detect scaled duplicates |
 | `--detect-cross-format` | Detect cross-format duplicates (e.g., HEIC + JPEG) |
 | `--detect-bursts` | Detect burst photos via SubSecTime EXIF |
-| `--strategy quality\|oldest\|newest\|folder` | Priority strategy for keeping duplicates |
+| `--strategy quality\|oldest\|newest\|folder` | Priority strategy |
 | `--prefer-folder "DCIM"` | Extra bonus for specified folder tags |
-| `--mode move\|trash\|photos-trash` | Move to review folder / macOS Trash / Photos.app delete |
+| `--mode move\|trash\|photos-trash` | Move to folder / Trash / Photos.app delete |
 | `--undo` | Undo the most recent move operation |
 | `--interactive` | Run organize_photos.py with step-by-step prompts |
-| `--dry-run` | Preview only — scan, detect, plan, but don't apply moves |
-| `--check-icloud` | Check iCloud download status of photos |
-| `--detect-sources` | Detect Android devices and external drives with photos |
-| `--dedup-method` | Choose detection method: exact/phash/scaled/cross-format/burst/all |
-| `--trash-mode` | Choose action: move/trash/photos-trash |
-| `--mode dedup\|by-date\|by-category\|by-location` | Organize mode: dedup (default), by-date (YYYY/MM), by-category, by-location |
+| `--dry-run` | Preview only — scan, detect, plan, but don't apply |
+| `--check-icloud` | Check iCloud download status |
+| `--detect-sources` | Detect Android devices and external drives |
+| `--dedup-method` | Detection method: exact/phash/scaled/cross-format/burst/all |
+| `--trash-mode` | Action: move/trash/photos-trash |
+| `--mode dedup\|by-date\|by-category\|by-location` | Organize mode |
 
 ### Import Flags (import_to_photos.py)
 
 | Flag | Description |
 |------|-------------|
-| `--source PATH` | External source path (folder, DCIM, drive) |
+| `--source PATH` | External source path |
 | `--library PATH` | .photoslibrary bundle (auto-detected if omitted) |
 | `--album NAME` | Target album in Photos.app (auto-created) |
-| `--skip-duplicates` / `--no-skip-duplicates` | Skip/force import of duplicates (default: skip) |
+| `--skip-duplicates` / `--no-skip-duplicates` | Skip/force import of duplicates |
 | `--dry-run` | Preview import without actually importing |
 | `--method auto\|photoscript\|osascript\|scriptingbridge` | Import method |
 | `--report PATH` | Write import report JSON |
-| `--detect-sources` | Detect mounted external drives and Android devices |
+| `--detect-sources` | Detect mounted external drives and Android |
 | `--show-shared-albums` | List shared albums from Photos.sqlite |
+| `--resume` | Resume interrupted import from checkpoint |
 
 ## Dependencies
 
@@ -145,9 +147,8 @@ python3 scripts/import_to_photos.py --detect-sources
 # List shared albums (read-only)
 python3 scripts/import_to_photos.py --show-shared-albums
 
-# Choose import method explicitly
-python3 scripts/import_to_photos.py --source /path/to/photos --method osascript
-# Methods: auto (default), photoscript (best), osascript (no deps), scriptingbridge (PyObjC)
+# Resume interrupted import
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos --resume
 ```
 
 **Important limitations:**

@@ -11,21 +11,24 @@ alwaysApply: true
 - NEVER enter .photoslibrary or .photolibrary directories
 - Always get user confirmation before applying move plans
 - Log all file operations to CSV audit trail
+- Scan writes commit each entry immediately — zero data loss on crash
 
 ## Code Style
 - Python 3.9+, PEP 8, 4-space indent
-- CLI scripts use argparse with --input/--output flags
-- All data exchange via CSV (UTF-8 with BOM)
+- CLI scripts use argparse with --input/--output/--index flags
+- SQLite (.db) preferred for output; CSV as fallback
+- All CSV files use UTF-8 with BOM for Excel compatibility
 - No heavy dependencies (no pandas/numpy)
 
 ## Pipeline
-1. scan_photos.py → photo_index.csv
-2. find_exact_duplicates.py → duplicates.csv
+1. scan_photos.py → photo_index.db (or .csv)
+2. find_exact_duplicates.py / find_similar_photos.py → duplicates.csv
 3. generate_move_plan.py → move_plan.csv
 4. apply_move_plan.py → move_log.csv (requires user confirmation)
+5. apply_move_plan.py --undo (reverse last operation)
 
-## Testing
-```bash
-pip install -r requirements.txt
-python3 scripts/scan_photos.py --input /path/to/photos --output ./photo_index.csv
-```
+## Interactive Workflow
+organize_photos.py — one-command pipeline with step-by-step preferences
+
+## Import
+import_to_photos.py — import from external drives/Android into Photos.app with dedup

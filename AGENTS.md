@@ -13,6 +13,7 @@ SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, de
 - **Scripts**: All scripts under `scripts/` are CLI tools using `argparse`
 - **Input/Output**: SQLite (.db) or CSV (.csv) — SQLite preferred for 100k+ photos
 - **Encoding**: All CSV files use UTF-8 with BOM for Excel compatibility
+- **Zero data loss**: Scan scripts commit each entry immediately to SQLite (WAL mode + synchronous=NORMAL)
 
 ## Safety Constraints
 
@@ -50,18 +51,20 @@ Apply:
   apply_move_plan.py        — Move/trash/photos-trash + undo support
 
 Interactive:
-  organize_photos.py        — One-command pipeline (collect prefs → scan → detect → preview → plan → confirm → apply)
+  organize_photos.py        — One-command pipeline
 
 Import:
-  import_to_photos.py      — Import from external drive/Android → dedup against library → import unique via photoscript/osascript/ScriptingBridge
+  import_to_photos.py      — Import from external drive/Android → dedup against library → import
 ```
 
 Each step is independent and produces a .db/.csv for the next step. This design allows:
+
 - Running any step independently
 - Manual review between steps
 - Re-running from any point without data loss
 - SQLite storage for efficient large-library operations
 - HTML preview for visual review before committing
+- Streaming writes for zero data loss on crash
 
 ## Auto-Categorization Rules (15+ Languages)
 
@@ -192,3 +195,9 @@ Source Scan → SHA-256 Hash → Library Index (Photos.sqlite) → Dedup → Imp
 - **ZASSET.ZCLOUDLOCALSTATE** — general cloud state flag
 - Library index only includes locally-available files (iCloud-only skipped to avoid missing file errors)
 - Storage check warns if < 5 GB available before import
+
+### Checkpoint & Resume
+
+- **--resume** flag enables resuming interrupted imports
+- **import_checkpoint.json** stores state between runs
+- **SIGINT/SIGTERM handler** saves checkpoint on Ctrl+C

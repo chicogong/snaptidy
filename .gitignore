@@ -19,7 +19,11 @@ env/
 
 # Project-specific (generated output files)
 *.csv
+*.db
 photo_index.json
 move_plan_*.csv
 move_log.csv
 snaptidy_output/
+undo_records/
+import_checkpoint.json
+import_report.json
