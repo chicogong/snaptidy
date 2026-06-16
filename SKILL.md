@@ -1,9 +1,9 @@
 ---
 name: snaptidy
-version: 3.4.1
+version: 3.5.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, create albums in Photos.app, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -26,7 +26,7 @@ metadata:
 
 ## When to Use
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album.
+Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**.
 
 **Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册
 
@@ -53,6 +53,14 @@ python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslib
 
 # Step 3: Full interactive workflow
 python3 scripts/organize_photos.py --source ~/Pictures/Export --interactive
+
+# Step 4: Organize Photos.app into date-based albums
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by date
+
+# Step 5: Organize by category (Screenshots, Photos, etc.)
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by category --dry-run
 
 # Import from external drive into Photos.app
 python3 scripts/import_to_photos.py --source /Volumes/External/Photos --dry-run
@@ -94,6 +102,44 @@ python3 scripts/generate_move_plan.py --duplicates dup.csv --index index.db \
 3. **Preview** — `generate_preview.py` → HTML thumbnails with KEEP/MOVE badges
 4. **Generate plan** — `generate_move_plan.py --strategy quality|oldest|newest|folder`
 5. **Review & apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+
+## Photos.app Album Organization — Create Albums by Date/Category
+
+Create albums directly in Photos.app (not just file-system folders):
+
+```bash
+# Organize by year/month
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by date
+
+# Organize by year only
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by year
+
+# Organize by category (📸 Photos, 📱 Screenshots, 🔄 Burst, 💬 WeChat)
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by category
+
+# Organize by format (JPEG, HEIC, PNG)
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by format
+
+# Smart: year + category (e.g., "2026/📸 Photos", "2026/📱 Screenshots")
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by smart
+
+# Preview without making changes
+python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
+  --mode photos-album --album-organize-by date --dry-run
+```
+
+| `--album-organize-by` | Album names | Best for |
+|------------------------|-------------|----------|
+| `date` | `2026/06 – June` | Timeline browsing |
+| `year` | `2026` | Yearly overview |
+| `category` | `📸 Photos`, `📱 Screenshots` | Quick filtering |
+| `format` | `JPEG`, `HEIC` | Format management |
+| `smart` | `2026/📸 Photos` | Combined timeline + category |
 
 ## Photos.app "Recently Deleted" — Safe Cleanup
 
