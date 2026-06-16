@@ -18,6 +18,7 @@ import argparse
 import json
 import os
 import sqlite3
+import subprocess
 import sys
 from datetime import datetime
 
@@ -42,6 +43,7 @@ ORGANIZE_MODES = {
     "by-date": "Organize photos into date-based folders (YYYY/MM)",
     "by-location": "Organize photos by GPS location",
     "by-category": "Organize by category (screenshots, WeChat, bursts, etc.)",
+    "photos-album": "Organize photos into albums in Photos.app (by date/category/format)",
 }
 
 DEDUP_METHODS = {
@@ -426,6 +428,356 @@ def generate_by_category_plan(index_db: str, plan_csv: str, target_root: str) ->
     return len(plan)
 
 
+# ---------------------------------------------------------------------------
+# Photos.app album organization
+# ---------------------------------------------------------------------------
+
+ALBUM_ORGANIZE_MODES = {
+    "date": "Create albums by year/month (e.g., '2026/01 – January')",
+    "year": "Create albums by year (e.g., '2026')",
+    "category": "Create albums by category (e.g., '📸 Photos', '📱 Screenshots')",
+    "format": "Create albums by format (e.g., 'JPEG', 'HEIC', 'PNG')",
+    "smart": "Create albums by year/category (e.g., '2026/📸 Photos', '2026/📱 Screenshots')",
+}
+
+# Category → album name mapping (with emoji prefix for visual distinction)
+CATEGORY_ALBUM_NAMES = {
+    "photo": "📸 Photos",
+    "screenshot": "📱 Screenshots",
+    "wechat": "💬 WeChat",
+    "burst": "🔄 Burst",
+    "video": "🎬 Videos",
+}
+
+# Format → album name mapping
+FORMAT_ALBUM_NAMES = {
+    "jpeg": "JPEG",
+    "heic": "HEIC",
+    "png": "PNG",
+    "tiff": "TIFF",
+    "raw": "RAW",
+    "webp": "WebP",
+    "other": "Other",
+}
+
+
+def _photos_album_exists(album_name: str) -> bool:
+    """Check if an album already exists in Photos.app via AppleScript."""
+    escaped_name = album_name.replace("\\", "\\\\").replace('"', '\\"')
+    script = f'''
+tell application "Photos"
+    try
+        set a to album "{escaped_name}"
+        return "exists"
+    on error
+        return "not_found"
+    end try
+end tell
+'''
+    try:
+        result = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True, text=True, timeout=15,
+        )
+        return "exists" in result.stdout.strip()
+    except Exception:
+        return False
+
+
+def _photos_create_album(album_name: str) -> bool:
+    """Create a new album in Photos.app via AppleScript. Returns True if successful."""
+    # Escape double quotes in album name
+    escaped_name = album_name.replace("\\", "\\\\").replace('"', '\\"')
+    # Use make new album + set name (the "named" parameter doesn't work in some locales)
+    script = f'''
+tell application "Photos"
+    try
+        set a to make new album
+        set name of a to "{escaped_name}"
+        return "created"
+    on error errMsg
+        return "error:" & errMsg
+    end try
+end tell
+'''
+    try:
+        result = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True, text=True, timeout=15,
+        )
+        return "created" in result.stdout.strip()
+    except Exception:
+        return False
+
+
+def _photos_add_to_album(uuids: list, album_name: str) -> tuple:
+    """Add photos (by UUID list) to an album in Photos.app via AppleScript.
+
+    Returns (success_count, error_count).
+    """
+    if not uuids:
+        return 0, 0
+
+    escaped_name = album_name.replace("\\", "\\\\").replace('"', '\\"')
+
+    # Process in batches of 10 to avoid AppleScript timeout
+    batch_size = 10
+    success = 0
+    errors = 0
+
+    for i in range(0, len(uuids), batch_size):
+        batch = uuids[i:i + batch_size]
+
+        # Build AppleScript to add items to album
+        # NOTE: Photos.app requires `add {item} to album` (list syntax),
+        # not `add item to album` (singular syntax fails with "doesn't understand add message")
+        items_code = ""
+        for uuid in batch:
+            photos_id = f"{uuid}/L0/001"
+            items_code += f'''
+        try
+            set theItem to media item id "{photos_id}"
+            add {{theItem}} to targetAlbum
+            set addedCount to addedCount + 1
+        on error
+            set errorCount to errorCount + 1
+        end try
+'''
+
+        script = f'''
+tell application "Photos"
+    set targetAlbum to album "{escaped_name}"
+    set addedCount to 0
+    set errorCount to 0
+{items_code}
+    return (addedCount as text) & "," & (errorCount as text)
+end tell
+'''
+        try:
+            result = subprocess.run(
+                ["/usr/bin/osascript", "-e", script],
+                capture_output=True, text=True, timeout=30,
+            )
+            output = result.stdout.strip()
+            if "," in output:
+                parts = output.split(",")
+                try:
+                    success += int(parts[0])
+                    errors += int(parts[1])
+                except ValueError:
+                    errors += len(batch)
+            else:
+                errors += len(batch)
+        except subprocess.TimeoutExpired:
+            errors += len(batch)
+        except Exception:
+            errors += len(batch)
+
+    return success, errors
+
+
+def _photos_list_existing_albums() -> dict:
+    """List all albums in Photos.app. Returns {album_name: photo_count}."""
+    script = '''
+tell application "Photos"
+    set albumInfo to {}
+    repeat with a in albums
+        set aName to name of a
+        set aCount to count of media items of a
+        set end of albumInfo to aName & ":" & aCount
+    end repeat
+    set AppleScript's text item delimiters to "|"
+    return albumInfo as text
+end tell
+'''
+    try:
+        result = subprocess.run(
+            ["/usr/bin/osascript", "-e", script],
+            capture_output=True, text=True, timeout=30,
+        )
+        albums = {}
+        for item in result.stdout.strip().split("|"):
+            item = item.strip()
+            if ":" in item:
+                name, count = item.rsplit(":", 1)
+                try:
+                    albums[name.strip()] = int(count.strip())
+                except ValueError:
+                    albums[name.strip()] = 0
+        return albums
+    except Exception:
+        return {}
+
+
+def organize_photos_albums(index_db: str, organize_by: str = "date",
+                           dry_run: bool = False) -> dict:
+    """Organize photos into albums in Photos.app.
+
+    organize_by options:
+      "date"     — Albums by year/month (e.g., "2026/01 – January")
+      "year"     — Albums by year (e.g., "2026")
+      "category" — Albums by category (e.g., "📸 Photos", "📱 Screenshots")
+      "format"   — Albums by format (e.g., "JPEG", "HEIC")
+      "smart"    — Albums by year/category (e.g., "2026/📸 Photos")
+
+    Returns a dict with stats: {albums_created, photos_added, errors, details}
+    """
+    import re
+
+    conn = sqlite3.connect(index_db)
+    conn.row_factory = sqlite3.Row
+    stats = {"albums_created": 0, "photos_added": 0, "errors": 0, "details": []}
+
+    # Step 1: Group photos by the desired dimension
+    # We need UUID (from filename) for AppleScript references
+    groups = {}  # album_name -> [uuid, ...]
+
+    cursor = conn.execute("SELECT file_path, filename, exif_datetime, file_mtime, category, format_family FROM photos")
+    for row in cursor:
+        filepath = row["file_path"]
+        filename = row["filename"]
+        exif_dt = row["exif_datetime"] or row["file_mtime"] or ""
+        category = row["category"] or "photo"
+        fmt_family = row["format_family"] or "other"
+
+        # Extract UUID from filename (Photos.app stores UUID.ext)
+        uuid_part = os.path.splitext(filename)[0]
+        if len(uuid_part) < 32:
+            continue  # Not a UUID-based filename, skip
+
+        # Determine album name
+        if organize_by == "date":
+            if not exif_dt:
+                album_name = "📅 No Date"
+            else:
+                # Parse date
+                try:
+                    if "T" in exif_dt:
+                        from datetime import datetime as dt
+                        parsed = dt.fromisoformat(exif_dt.replace("Z", "+00:00"))
+                    else:
+                        from datetime import datetime as dt
+                        for fmt in ("%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M:%S"):
+                            try:
+                                parsed = dt.strptime(exif_dt[:19], fmt)
+                                break
+                            except ValueError:
+                                continue
+                        else:
+                            album_name = "📅 No Date"
+                            groups.setdefault(album_name, []).append(uuid_part)
+                            continue
+                    month_names = {
+                        1: "January", 2: "February", 3: "March", 4: "April",
+                        5: "May", 6: "June", 7: "July", 8: "August",
+                        9: "September", 10: "October", 11: "November", 12: "December",
+                    }
+                    album_name = f"{parsed.year:04d}/{parsed.month:02d} – {month_names.get(parsed.month, '')}"
+                except Exception:
+                    album_name = "📅 No Date"
+
+        elif organize_by == "year":
+            if not exif_dt:
+                album_name = "📅 No Date"
+            else:
+                try:
+                    year = exif_dt[:4]
+                    if year.isdigit() and int(year) > 1990:
+                        album_name = year
+                    else:
+                        album_name = "📅 No Date"
+                except Exception:
+                    album_name = "📅 No Date"
+
+        elif organize_by == "category":
+            album_name = CATEGORY_ALBUM_NAMES.get(category, f"📁 {category.title()}")
+
+        elif organize_by == "format":
+            album_name = FORMAT_ALBUM_NAMES.get(fmt_family, fmt_family.title())
+
+        elif organize_by == "smart":
+            # year/category
+            if exif_dt:
+                try:
+                    year = exif_dt[:4]
+                    if not (year.isdigit() and int(year) > 1990):
+                        year = "Unknown"
+                except Exception:
+                    year = "Unknown"
+            else:
+                year = "No Date"
+            cat_name = CATEGORY_ALBUM_NAMES.get(category, category.title())
+            album_name = f"{year}/{cat_name}"
+        else:
+            album_name = "Other"
+
+        groups.setdefault(album_name, []).append(uuid_part)
+
+    conn.close()
+
+    if not groups:
+        print("  ⚠️  No photos to organize into albums.")
+        return stats
+
+    # Step 2: Preview
+    print()
+    print("📋 Album Organization Plan:")
+    print("─" * 60)
+    for album_name, uuids in sorted(groups.items()):
+        print(f"  📁 {album_name}: {len(uuids)} photos")
+    print()
+
+    if dry_run:
+        print("🏁 Dry run — no albums were created.")
+        print(f"   Would create {len(groups)} albums with {sum(len(v) for v in groups.values())} photos")
+        stats["details"] = [{"album": name, "count": len(uuids)} for name, uuids in sorted(groups.items())]
+        return stats
+
+    # Step 3: Check permission
+    from apply_move_plan import ensure_photos_permission
+    if not ensure_photos_permission():
+        print("  ❌ Cannot organize albums without Photos.app automation permission.")
+        return stats
+
+    # Step 4: Create albums and add photos
+    existing_albums = _photos_list_existing_albums()
+
+    for album_name, uuids in sorted(groups.items()):
+        # Check if album already exists
+        album_existed = album_name in existing_albums
+
+        if not album_existed:
+            print(f"  📁 Creating album: {album_name}...", end=" ", flush=True)
+            if _photos_create_album(album_name):
+                stats["albums_created"] += 1
+                print("✅")
+            else:
+                print("❌ Failed to create")
+                stats["errors"] += len(uuids)
+                stats["details"].append({"album": album_name, "count": len(uuids), "status": "create_failed"})
+                continue
+        else:
+            print(f"  📁 Album exists: {album_name} (adding {len(uuids)} photos)", end=" ", flush=True)
+
+        # Add photos to album
+        success, errors = _photos_add_to_album(uuids, album_name)
+        stats["photos_added"] += success
+        stats["errors"] += errors
+        if errors == 0:
+            print(f"✅ {success} added")
+        else:
+            print(f"⚠️  {success} added, {errors} failed")
+        stats["details"].append({
+            "album": album_name,
+            "count": len(uuids),
+            "added": success,
+            "errors": errors,
+            "existed": album_existed,
+        })
+
+    return stats
+
+
 def show_preview(index_db: str, plan_csv: str) -> dict:
     """Step 4: Show preview summary. Returns stats dict."""
     import csv
@@ -804,6 +1156,9 @@ def main() -> None:
     parser.add_argument("--prefer-album", action="append", default=[],
                         help="Prefer keeping photos from specified album(s) when choosing which duplicate to keep. "
                              "Used with --strategy folder.")
+    parser.add_argument("--album-organize-by", choices=list(ALBUM_ORGANIZE_MODES.keys()), default="date",
+                        help="Album organization dimension for --mode photos-album (default: date). "
+                             "Options: date (year/month), year, category, format, smart (year/category)")
     args = parser.parse_args()
 
     # Auto-detect source type
@@ -955,6 +1310,32 @@ def main() -> None:
             return
         print("  GPS-based location organization is not yet fully implemented.")
         print("  Photos with GPS data will be organized by city/region in a future version.")
+        return
+
+    elif mode == "photos-album":
+        # Photos.app album organization mode
+        if source_type != "photos_library":
+            print("  ⚠️  --mode photos-album requires --source-type photos_library")
+            print("     Point --source to a .photoslibrary bundle.")
+            return
+
+        organize_by = args.album_organize_by
+        print()
+        print(f"📁 Step 2/5: Organizing Photos.app albums by {organize_by}...")
+        print(f"   Mode: {ALBUM_ORGANIZE_MODES.get(organize_by, organize_by)}")
+        album_stats = organize_photos_albums(index_db, organize_by=organize_by, dry_run=args.dry_run)
+
+        print()
+        if album_stats["albums_created"] > 0 or args.dry_run:
+            print("─" * 60)
+            if args.dry_run:
+                print(f"🏁 Dry run — no albums were created.")
+            else:
+                print(f"✅ Album organization complete!")
+            print(f"   Albums created: {album_stats['albums_created']}")
+            print(f"   Photos added: {album_stats['photos_added']}")
+            if album_stats["errors"]:
+                print(f"   Errors: {album_stats['errors']}")
         return
 
     else:
