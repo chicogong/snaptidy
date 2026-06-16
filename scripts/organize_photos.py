@@ -1336,6 +1336,25 @@ def main() -> None:
             print(f"   Photos added: {album_stats['photos_added']}")
             if album_stats["errors"]:
                 print(f"   Errors: {album_stats['errors']}")
+
+        # Generate HTML report
+        report_path = os.path.join(output_dir, "album_report.html")
+        try:
+            from generate_album_report import generate_album_report_html
+            report_html = generate_album_report_html(
+                index_db=index_db,
+                organize_by=organize_by,
+                stats=album_stats,
+            )
+            with open(report_path, "w", encoding="utf-8") as f:
+                f.write(report_html)
+            print(f"   📊 Report: {report_path}")
+            # Open report in browser
+            import subprocess
+            subprocess.Popen(["open", report_path])
+        except Exception as e:
+            print(f"   ⚠️  Could not generate report: {e}")
+
         return
 
     else:
