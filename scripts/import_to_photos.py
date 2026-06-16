@@ -31,6 +31,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import sqlite3
 import subprocess
 import sys
@@ -54,6 +55,9 @@ except ImportError:
 
 # Core Data epoch: 2001-01-01 00:00:00 UTC
 CORE_DATA_EPOCH = datetime(2001, 1, 1)
+
+# Checkpoint file for resume support
+CHECKPOINT_FILENAME = "import_checkpoint.json"
 
 IMAGE_EXTS = {
     "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif",
@@ -588,7 +592,7 @@ def create_album_osascript(album_name: str) -> bool:
 def import_photos(source_path: str, library_path: str = None,
                   album_name: str = None, skip_duplicates: bool = True,
                   dry_run: bool = False, import_method: str = "auto",
-                  report_path: str = None) -> None:
+                  report_path: str = None, resume: bool = False) -> None:
     """Main import workflow.
 
     Args:
@@ -599,6 +603,7 @@ def import_photos(source_path: str, library_path: str = None,
         dry_run: Show what would be imported without actually importing
         import_method: "auto", "photoscript", "osascript", or "scriptingbridge"
         report_path: Path to write import report JSON
+        resume: Resume from previous interrupted import (skips already-imported files)
     """
     print(f"📦 SnapTidy Import — {source_path}")
     print()
@@ -676,6 +681,24 @@ def import_photos(source_path: str, library_path: str = None,
 
     import_paths = [f["file_path"] for f in unique_files]
 
+    # Checkpoint support: resume from previous interrupted import
+    checkpoint_path = os.path.join(
+        os.path.dirname(os.path.abspath(report_path)) if report_path else os.path.dirname(source_path),
+        CHECKPOINT_FILENAME
+    )
+    already_imported = set()
+    if resume and os.path.exists(checkpoint_path):
+        try:
+            with open(checkpoint_path, encoding="utf-8") as cf:
+                ckpt = json.load(cf)
+            already_imported = set(ckpt.get("imported_files", []))
+            print(f"  📋 Resuming: {len(already_imported)} files already imported from previous run")
+            # Filter out already-imported files
+            import_paths = [p for p in import_paths if p not in already_imported]
+            print(f"  Remaining: {len(import_paths)} files to import")
+        except Exception as e:
+            print(f"  ⚠️  Could not load checkpoint ({e}), starting fresh")
+
     # Choose import method
     if import_method == "auto":
         if PHOTOSCRIPT_AVAILABLE:
@@ -686,6 +709,34 @@ def import_photos(source_path: str, library_path: str = None,
             import_method = "osascript"
 
     print(f"  Method: {import_method}")
+
+    # Register signal handler for graceful shutdown — save checkpoint on Ctrl+C
+    _checkpoint_ref = {"path": checkpoint_path, "imported": already_imported,
+                        "source_path": source_path, "library_path": library_path}
+
+    def _save_checkpoint_on_signal(signum, frame):
+        """Save checkpoint on SIGINT/SIGTERM so user can resume later."""
+        print(f"\n⚠️  Interrupted! Saving checkpoint...")
+        try:
+            ckpt_data = {
+                "updated_at": datetime.now().isoformat(),
+                "source_path": _checkpoint_ref["source_path"],
+                "library_path": _checkpoint_ref["library_path"],
+                "imported_files": sorted(_checkpoint_ref["imported"]),
+                "total_imported": len(_checkpoint_ref["imported"]),
+                "remaining": 0,  # Unknown at interrupt time
+                "interrupted": True,
+            }
+            with open(_checkpoint_ref["path"], "w", encoding="utf-8") as cf:
+                json.dump(ckpt_data, cf, indent=2, ensure_ascii=False)
+            print(f"  Checkpoint saved: {_checkpoint_ref['path']}")
+            print(f"  Use --resume to continue from where you left off.")
+        except Exception as e:
+            print(f"  ⚠️  Could not save checkpoint: {e}")
+        sys.exit(130)
+
+    signal.signal(signal.SIGINT, _save_checkpoint_on_signal)
+    signal.signal(signal.SIGTERM, _save_checkpoint_on_signal)
 
     if import_method == "photoscript":
         success, errors, imported, error_msgs = import_via_photoscript(
@@ -699,6 +750,22 @@ def import_photos(source_path: str, library_path: str = None,
         success, errors, imported, error_msgs = import_via_osascript(
             import_paths, album_name, skip_duplicates
         )
+
+    # Save checkpoint: record all successfully imported files for resume support
+    all_imported = already_imported | set(imported)
+    try:
+        ckpt_data = {
+            "updated_at": datetime.now().isoformat(),
+            "source_path": source_path,
+            "library_path": library_path,
+            "imported_files": sorted(all_imported),
+            "total_imported": len(all_imported),
+            "remaining": len(import_paths) - success,
+        }
+        with open(checkpoint_path, "w", encoding="utf-8") as cf:
+            json.dump(ckpt_data, cf, indent=2, ensure_ascii=False)
+    except Exception:
+        pass  # Checkpoint save failure is non-critical
 
     # Step 8: Report
     print()
@@ -781,6 +848,8 @@ def main() -> None:
                              "osascript (no deps), scriptingbridge (PyObjC)")
     parser.add_argument("--report",
                         help="Path to write import report JSON")
+    parser.add_argument("--resume", action="store_true",
+                        help="Resume a previous interrupted import (skips already-imported files)")
     parser.add_argument("--detect-sources", action="store_true",
                         help="Detect mounted external drives and Android devices")
     parser.add_argument("--show-shared-albums", action="store_true",
@@ -857,6 +926,7 @@ def main() -> None:
         dry_run=args.dry_run,
         import_method=args.method,
         report_path=report_path,
+        resume=args.resume,
     )
 
 

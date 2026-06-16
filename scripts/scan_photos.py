@@ -360,6 +360,72 @@ def compute_aspect_ratio(width, height) -> str:
     return ""
 
 
+def _compute_entry(full_path, name, ext, stat, input_dir, scan_time):
+    """Compute metadata dict for a single file.
+
+    Returns a dict ready for INSERT OR REPLACE into the photos table.
+    """
+    size_bytes = stat.st_size
+    mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
+    category = detect_category(name, ext)
+    folder_tag = get_folder_tag(full_path, input_dir)
+
+    # Initialize fields common to images and videos
+    exif_dt = ""
+    width = ""
+    height = ""
+    phash = ""
+    gps_lat = ""
+    gps_lon = ""
+    camera_make = ""
+    camera_model = ""
+    has_exif_val = 0
+    subsec_time = ""
+    aspect_ratio = ""
+    format_family = get_format_family(ext)
+
+    if ext in IMAGE_EXTS:
+        media_type = "image"
+        exif_dt = get_exif_datetime(full_path)
+        subsec_time = get_subsec_time(full_path)
+        width, height = get_image_size(full_path)
+        phash = compute_phash(full_path)
+        aspect_ratio = compute_aspect_ratio(width, height)
+        gps_lat, gps_lon = get_gps_coords(full_path)
+        camera_make, camera_model = get_camera_info(full_path)
+        has_exif_val = 1 if has_exif_data(full_path) else 0
+    else:
+        media_type = "video"
+
+    sha256 = compute_sha256(full_path)
+
+    return {
+        "file_path": full_path,
+        "filename": name,
+        "extension": ext,
+        "size_bytes": size_bytes,
+        "sha256": sha256,
+        "exif_datetime": exif_dt,
+        "file_mtime": mtime,
+        "width": width,
+        "height": height,
+        "phash": phash,
+        "media_type": media_type,
+        "category": category,
+        "gps_latitude": gps_lat,
+        "gps_longitude": gps_lon,
+        "camera_make": camera_make,
+        "camera_model": camera_model,
+        "has_exif": has_exif_val,
+        "folder_tag": folder_tag,
+        "scan_root": input_dir,
+        "scanned_at": scan_time,
+        "aspect_ratio": aspect_ratio,
+        "subsec_time": subsec_time,
+        "format_family": format_family,
+    }
+
+
 def init_db(db_path: str) -> sqlite3.Connection:
     """Initialize SQLite database with the photos table."""
     conn = sqlite3.connect(db_path)
@@ -413,11 +479,25 @@ def init_db(db_path: str) -> sqlite3.Connection:
     return conn
 
 
+def _insert_entry(conn, entry):
+    """Insert a single entry into the photos table."""
+    cols = ", ".join(entry.keys())
+    placeholders = ", ".join("?" for _ in entry)
+    conn.execute(f"INSERT OR REPLACE INTO photos ({cols}) VALUES ({placeholders})",
+                 list(entry.values()))
+
+
 def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> None:
-    """Walk through input_dir and write metadata to SQLite DB or CSV."""
+    """Walk through input_dir and write metadata to SQLite DB or CSV.
+
+    For SQLite mode, entries are written and committed one-by-one so that
+    a crash at any point never loses already-computed data.  Re-running
+    the scan safely picks up where it left off (INSERT OR REPLACE).
+    """
     input_dir = os.path.abspath(input_dir)
     scan_time = datetime.now().isoformat()
-    entries = []
+    categories = {}
+    heic_count = 0
 
     # Phase 1: Collect file list (fast)
     file_list = []
@@ -437,111 +517,92 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
         print("No photo/video files found.")
         return
 
-    # Phase 2: Process each file (slow) with progress
-    last_pct = -1
-    for idx, (root, name, ext) in enumerate(file_list):
-        # Progress indicator — update every 5%
-        pct = idx * 100 // total_files
-        if pct >= last_pct + 5 or idx == 0:
-            print(f"  Scanning... {idx}/{total_files} ({pct}%)")
-            last_pct = pct
-
-        full_path = os.path.join(root, name)
-        try:
-            stat = os.stat(full_path)
-        except OSError:
-            continue
-
-        size_bytes = stat.st_size
-        mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
-        category = detect_category(name, ext)
-        folder_tag = get_folder_tag(full_path, input_dir)
-
-        # Initialize fields common to images and videos
-        exif_dt = ""
-        width = ""
-        height = ""
-        phash = ""
-        gps_lat = ""
-        gps_lon = ""
-        camera_make = ""
-        camera_model = ""
-        has_exif_val = 0
-        subsec_time = ""
-        aspect_ratio = ""
-        format_family = get_format_family(ext)
-
-        if ext in IMAGE_EXTS:
-            media_type = "image"
-            exif_dt = get_exif_datetime(full_path)
-            subsec_time = get_subsec_time(full_path)
-            width, height = get_image_size(full_path)
-            phash = compute_phash(full_path)
-            aspect_ratio = compute_aspect_ratio(width, height)
-            gps_lat, gps_lon = get_gps_coords(full_path)
-            camera_make, camera_model = get_camera_info(full_path)
-            has_exif_val = 1 if has_exif_data(full_path) else 0
-        else:
-            media_type = "video"
-
-        sha256 = compute_sha256(full_path)
-
-        entries.append({
-            "file_path": full_path,
-            "filename": name,
-            "extension": ext,
-            "size_bytes": size_bytes,
-            "sha256": sha256,
-            "exif_datetime": exif_dt,
-            "file_mtime": mtime,
-            "width": width,
-            "height": height,
-            "phash": phash,
-            "media_type": media_type,
-            "category": category,
-            "gps_latitude": gps_lat,
-            "gps_longitude": gps_lon,
-            "camera_make": camera_make,
-            "camera_model": camera_model,
-            "has_exif": has_exif_val,
-            "folder_tag": folder_tag,
-            "scan_root": input_dir,
-            "scanned_at": scan_time,
-            "aspect_ratio": aspect_ratio,
-            "subsec_time": subsec_time,
-            "format_family": format_family,
-        })
-
     if use_db:
-        # Write to SQLite
+        # --- SQLite streaming mode: insert + commit each entry immediately ---
         conn = init_db(output_path)
+        # Delete previous scan results for this root first
         conn.execute("DELETE FROM photos WHERE scan_root = ?", (input_dir,))
-        for entry in entries:
-            cols = ", ".join(entry.keys())
-            placeholders = ", ".join("?" for _ in entry)
-            conn.execute(f"INSERT OR REPLACE INTO photos ({cols}) VALUES ({placeholders})",
-                         list(entry.values()))
         conn.commit()
 
-        # Stats
-        total = len(entries)
-        categories = {}
-        for e in entries:
-            cat = e["category"]
-            categories[cat] = categories.get(cat, 0) + 1
+        last_pct = -1
+        for idx, (root, name, ext) in enumerate(file_list):
+            # Progress indicator — update every 5%
+            pct = idx * 100 // total_files
+            if pct >= last_pct + 5 or idx == 0:
+                print(f"  Scanning... {idx}/{total_files} ({pct}%)")
+                last_pct = pct
 
+            full_path = os.path.join(root, name)
+            try:
+                lstat = os.lstat(full_path)
+            except OSError:
+                continue
+
+            # Skip symbolic links (avoid infinite loops and double-counting)
+            if os.path.islink(full_path):
+                continue
+
+            try:
+                stat = os.stat(full_path)
+            except OSError:
+                continue
+
+            size_bytes = stat.st_size
+            # Skip zero-byte files (empty placeholders or iCloud stubs)
+            if size_bytes == 0:
+                continue
+
+            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time)
+            _insert_entry(conn, entry)
+            conn.commit()  # Commit every entry — zero data loss on crash
+
+            cat = entry["category"]
+            categories[cat] = categories.get(cat, 0) + 1
+            if entry["extension"] in ("heic", "heif"):
+                heic_count += 1
+
+        conn.close()
+
+        # Stats
+        total = sum(categories.values())
         print(f"Index written to SQLite: {output_path}")
         print(f"  Total: {total} files")
         for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
             print(f"  {cat}: {count}")
-        if not HEIC_SUPPORT:
-            heic_count = sum(1 for e in entries if e["extension"] in ("heic", "heif"))
-            if heic_count > 0:
-                print(f"  ⚠️  {heic_count} HEIC/HEIF files found — install pillow-heif for full support:")
-                print(f"      pip install pillow-heif")
-        conn.close()
+        if not HEIC_SUPPORT and heic_count > 0:
+            print(f"  ⚠️  {heic_count} HEIC/HEIF files found — install pillow-heif for full support:")
+            print(f"      pip install pillow-heif")
     else:
-        # Write to CSV (fallback)
+        # --- CSV mode: still needs to build list first ---
+        entries = []
+        last_pct = -1
+        for idx, (root, name, ext) in enumerate(file_list):
+            pct = idx * 100 // total_files
+            if pct >= last_pct + 5 or idx == 0:
+                print(f"  Scanning... {idx}/{total_files} ({pct}%)")
+                last_pct = pct
+
+            full_path = os.path.join(root, name)
+            try:
+                lstat = os.lstat(full_path)
+            except OSError:
+                continue
+
+            if os.path.islink(full_path):
+                continue
+
+            try:
+                stat = os.stat(full_path)
+            except OSError:
+                continue
+
+            size_bytes = stat.st_size
+            if size_bytes == 0:
+                continue
+
+            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time)
+            entries.append(entry)
+
         fieldnames = list(entries[0].keys()) if entries else []
         with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

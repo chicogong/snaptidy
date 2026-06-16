@@ -23,8 +23,10 @@ photo file. It only reads metadata.
 import argparse
 import hashlib
 import os
+import shutil
 import sqlite3
 import sys
+import tempfile
 from datetime import datetime, timedelta
 
 try:
@@ -240,6 +242,65 @@ def compute_aspect_ratio(width, height) -> str:
     return ""
 
 
+def _open_output_db(output_path: str) -> sqlite3.Connection:
+    """Open and initialize the output SQLite database."""
+    conn = sqlite3.connect(output_path)
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS photos (
+            file_path TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            extension TEXT NOT NULL,
+            size_bytes INTEGER NOT NULL,
+            sha256 TEXT NOT NULL,
+            exif_datetime TEXT DEFAULT '',
+            file_mtime TEXT DEFAULT '',
+            width TEXT DEFAULT '',
+            height TEXT DEFAULT '',
+            phash TEXT DEFAULT '',
+            media_type TEXT NOT NULL DEFAULT 'image',
+            category TEXT NOT NULL DEFAULT 'photo',
+            gps_latitude TEXT DEFAULT '',
+            gps_longitude TEXT DEFAULT '',
+            camera_make TEXT DEFAULT '',
+            camera_model TEXT DEFAULT '',
+            has_exif INTEGER DEFAULT 0,
+            folder_tag TEXT DEFAULT '',
+            scan_root TEXT DEFAULT '',
+            scanned_at TEXT DEFAULT '',
+            aspect_ratio TEXT DEFAULT '',
+            subsec_time TEXT DEFAULT '',
+            format_family TEXT DEFAULT '',
+            photos_favorite INTEGER DEFAULT 0,
+            photos_hidden INTEGER DEFAULT 0,
+            photos_screenshot INTEGER DEFAULT 0,
+            photos_duplicate_visibility INTEGER DEFAULT 0,
+            photos_cloud_state INTEGER DEFAULT 0,
+            photos_albums TEXT DEFAULT '',
+            photos_shared_albums TEXT DEFAULT '',
+            photos_icloud_locally_available INTEGER DEFAULT -1
+        )
+    """)
+    # Indexes
+    for idx in ["idx_sha256", "idx_phash", "idx_category", "idx_exif_datetime",
+                "idx_folder_tag", "idx_camera_model", "idx_aspect_ratio",
+                "idx_format_family", "idx_photos_favorite", "idx_photos_albums",
+                "idx_photos_shared_albums", "idx_photos_icloud_locally_available"]:
+        col = idx.replace("idx_", "")
+        conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON photos({col})")
+    conn.commit()
+    return conn
+
+
+def _insert_entry(conn, entry: dict):
+    """Insert a single entry into the photos table (does NOT commit)."""
+    cols = ", ".join(entry.keys())
+    placeholders = ", ".join("?" for _ in entry)
+    conn.execute(f"INSERT OR REPLACE INTO photos ({cols}) VALUES ({placeholders})",
+                 list(entry.values()))
+
+
 def scan_photos_library(library_path: str, output_path: str) -> None:
     """Scan a Photos Library and write metadata to SQLite DB."""
     library_path = os.path.abspath(library_path)
@@ -250,8 +311,21 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         print(f"Error: Photos.sqlite not found at {db_path}", file=sys.stderr)
         sys.exit(1)
 
-    # Read Photos.sqlite
-    photos_db = sqlite3.connect(db_path)
+    # SAFETY: Copy Photos.sqlite to temp file before querying
+    # to avoid locking issues if Photos.app is running
+    tmp_db_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".sqlite", delete=False) as tmp:
+            tmp_db_path = tmp.name
+        shutil.copy2(db_path, tmp_db_path)
+        print(f"  Using copy of Photos.sqlite (safe read)")
+        photos_db = sqlite3.connect(tmp_db_path)
+    except Exception as e:
+        print(f"Warning: Could not copy Photos.sqlite ({e}), using direct connection", file=sys.stderr)
+        photos_db = sqlite3.connect(db_path)
+        if tmp_db_path and os.path.exists(tmp_db_path):
+            os.unlink(tmp_db_path)
+        tmp_db_path = None
     photos_db.row_factory = sqlite3.Row
 
     # Get album membership (asset PK -> list of album titles)
@@ -323,10 +397,16 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         WHERE ZTRASHEDSTATE = 0
     """)
 
-    entries = []
+    entries = []  # Kept only for HEIC count in stats; entries are streamed to DB
+    heic_count = 0
     scan_time = datetime.now().isoformat()
     stats = {"total": 0, "photo": 0, "video": 0, "screenshot": 0, "favorite": 0,
              "skipped_not_found": 0, "icloud_only": 0, "in_shared_album": 0}
+
+    # Open output DB first (before the asset loop) so we can stream writes
+    out_conn = _open_output_db(output_path)
+    out_conn.execute("DELETE FROM photos WHERE scan_root = ?", (library_path,))
+    out_conn.commit()
 
     for row in cursor:
         pk = row["Z_PK"]
@@ -348,8 +428,17 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         else:
             continue
 
-        # Check if file exists
+        # Check if file exists and is not empty
         if not os.path.exists(file_path):
+            stats["skipped_not_found"] += 1
+            continue
+
+        # Skip zero-byte files (iCloud stubs or corrupted files)
+        try:
+            if os.path.getsize(file_path) == 0:
+                stats["skipped_not_found"] += 1
+                continue
+        except OSError:
             stats["skipped_not_found"] += 1
             continue
 
@@ -440,7 +529,7 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         date_iso = core_data_to_iso(date_created) if date_created else ""
         exif_dt = exif_dt or date_iso  # Prefer EXIF, fall back to Photos.app date
 
-        entries.append({
+        entry_dict = {
             "file_path": file_path,
             "filename": filename,
             "extension": ext,
@@ -473,64 +562,29 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             "photos_albums": album_str,
             "photos_shared_albums": shared_album_str,
             "photos_icloud_locally_available": icloud_locally_available,
-        })
+        }
+
+        entries.append(entry_dict)
+
+        # Track HEIC count for stats
+        if ext in ("heic", "heif"):
+            heic_count += 1
+
+        # Stream to output DB immediately — zero data loss on crash
+        _insert_entry(out_conn, entry_dict)
+        out_conn.commit()
 
     photos_db.close()
 
-    # Write to output SQLite
-    conn = sqlite3.connect(output_path)
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS photos (
-            file_path TEXT PRIMARY KEY,
-            filename TEXT NOT NULL,
-            extension TEXT NOT NULL,
-            size_bytes INTEGER NOT NULL,
-            sha256 TEXT NOT NULL,
-            exif_datetime TEXT DEFAULT '',
-            file_mtime TEXT DEFAULT '',
-            width TEXT DEFAULT '',
-            height TEXT DEFAULT '',
-            phash TEXT DEFAULT '',
-            media_type TEXT NOT NULL DEFAULT 'image',
-            category TEXT NOT NULL DEFAULT 'photo',
-            gps_latitude TEXT DEFAULT '',
-            gps_longitude TEXT DEFAULT '',
-            camera_make TEXT DEFAULT '',
-            camera_model TEXT DEFAULT '',
-            has_exif INTEGER DEFAULT 0,
-            folder_tag TEXT DEFAULT '',
-            scan_root TEXT DEFAULT '',
-            scanned_at TEXT DEFAULT '',
-            aspect_ratio TEXT DEFAULT '',
-            subsec_time TEXT DEFAULT '',
-            format_family TEXT DEFAULT '',
-            photos_favorite INTEGER DEFAULT 0,
-            photos_hidden INTEGER DEFAULT 0,
-            photos_screenshot INTEGER DEFAULT 0,
-            photos_duplicate_visibility INTEGER DEFAULT 0,
-            photos_cloud_state INTEGER DEFAULT 0,
-            photos_albums TEXT DEFAULT '',
-            photos_shared_albums TEXT DEFAULT '',
-            photos_icloud_locally_available INTEGER DEFAULT -1
-        )
-    """)
-    # Indexes
-    for idx in ["idx_sha256", "idx_phash", "idx_category", "idx_exif_datetime",
-                "idx_folder_tag", "idx_camera_model", "idx_aspect_ratio",
-                "idx_format_family", "idx_photos_favorite", "idx_photos_albums",
-                "idx_photos_shared_albums", "idx_photos_icloud_locally_available"]:
-        col = idx.replace("idx_", "")
-        conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON photos({col})")
+    # Clean up temp copy of Photos.sqlite
+    if tmp_db_path and os.path.exists(tmp_db_path):
+        try:
+            os.unlink(tmp_db_path)
+        except OSError:
+            pass
 
-    conn.execute("DELETE FROM photos WHERE scan_root = ?", (library_path,))
-    for entry in entries:
-        cols = ", ".join(entry.keys())
-        placeholders = ", ".join("?" for _ in entry)
-        conn.execute(f"INSERT OR REPLACE INTO photos ({cols}) VALUES ({placeholders})",
-                     list(entry.values()))
-    conn.commit()
-    conn.close()
+    # Close output DB (data was already streamed during the loop)
+    out_conn.close()
 
     # Stats
     print(f"Photos Library scanned: {library_path}")
@@ -544,7 +598,6 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
     if stats['skipped_not_found'] > 0:
         print(f"  Skipped (file not found / iCloud-only): {stats['skipped_not_found']}")
     if not HEIC_SUPPORT:
-        heic_count = sum(1 for e in entries if e["extension"] in ("heic", "heif"))
         if heic_count > 0:
             print(f"  ⚠️  {heic_count} HEIC files — install pillow-heif for full support:")
             print(f"      pip install pillow-heif")

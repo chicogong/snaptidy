@@ -15,6 +15,7 @@ Usage:
 import argparse
 import base64
 import csv
+import html
 import os
 import sqlite3
 import sys
@@ -70,8 +71,16 @@ MATCH_TYPE_LABELS = {
 }
 
 
-def generate_preview_html(duplicates_csv: str, index_db: str, move_plan_csv: str = None) -> str:
-    """Generate HTML preview page."""
+def generate_preview_html(duplicates_csv: str, index_db: str, move_plan_csv: str = None,
+                          max_groups: int = 500) -> str:
+    """Generate HTML preview page.
+
+    Args:
+        duplicates_csv: Path to duplicates CSV
+        index_db: Path to SQLite metadata index
+        move_plan_csv: Optional path to move plan CSV
+        max_groups: Maximum number of groups to render (prevents huge HTML files)
+    """
     # Load metadata
     conn = sqlite3.connect(index_db)
     conn.row_factory = sqlite3.Row
@@ -163,8 +172,14 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
         html_parts.append(f'<div class="stat"><div class="stat-value">{count}</div><div class="stat-label">{label}</div></div>')
     html_parts.append(f'</div>')
 
-    # Groups
+    # Groups (limit to max_groups to prevent huge HTML files)
+    rendered_groups = 0
+    skipped_groups = 0
     for gid, members in sorted(groups.items(), key=lambda x: int(x[0])):
+        if rendered_groups >= max_groups:
+            skipped_groups = len(groups) - rendered_groups
+            break
+        rendered_groups += 1
         mt = members[0].get("match_type", "unknown")
         mt_label = MATCH_TYPE_LABELS.get(mt, mt)
         html_parts.append(f'<div class="group">')
@@ -178,6 +193,7 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
             path = member.get("file_path", "")
             meta = metadata.get(path, {})
             fname = meta.get("filename", os.path.basename(path))
+            fname_escaped = html.escape(fname)
             ext = meta.get("extension", "")
             w = meta.get("width", "")
             h = meta.get("height", "")
@@ -197,7 +213,7 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
             # Thumbnail
             thumb_b64 = get_thumbnail_base64(path)
             if thumb_b64:
-                thumb_html = f'<img class="thumbnail" src="data:image/jpeg;base64,{thumb_b64}" alt="{fname}">'
+                thumb_html = f'<img class="thumbnail" src="data:image/jpeg;base64,{thumb_b64}" alt="{fname_escaped}">'
             elif ext in ("mov", "mp4", "m4v"):
                 thumb_html = '<div class="no-thumb">Video</div>'
             else:
@@ -213,17 +229,25 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
 <div class="card {status_class}">
   <span class="badge {status_class}">{status_label}</span>
   {thumb_html}
-  <div class="filename" title="{fname}">{fname}</div>
+  <div class="filename" title="{fname_escaped}">{fname_escaped}</div>
   <div class="meta">
-    <strong>{w}×{h}</strong> · {size_str}<br>
-    Category: <strong>{cat}</strong><br>
-    Folder: <strong>{folder}</strong><br>
-    EXIF: {"Yes" if has_exif else "No"} · {camera}<br>
-    <span style="color:#c7c7cc">hash: {phash}…</span>
+    <strong>{html.escape(str(w))}×{html.escape(str(h))}</strong> · {html.escape(size_str)}<br>
+    Category: <strong>{html.escape(str(cat))}</strong><br>
+    Folder: <strong>{html.escape(str(folder))}</strong><br>
+    EXIF: {"Yes" if has_exif else "No"} · {html.escape(str(camera))}<br>
+    <span style="color:#c7c7cc">hash: {html.escape(phash)}…</span>
   </div>
 </div>''')
 
         html_parts.append(f'</div></div>')
+
+    if skipped_groups > 0:
+        html_parts.append(f'''
+<div class="group" style="text-align:center; padding:30px; color:#86868b;">
+  <p style="font-size:16px;">⚠️ Showing first {max_groups} of {total_groups} groups</p>
+  <p style="font-size:13px;">{skipped_groups} more groups not shown to keep page size manageable.</p>
+  <p style="font-size:13px;">Use <code>--max-groups {total_groups}</code> to show all groups.</p>
+</div>''')
 
     html_parts.append('</body></html>')
 
@@ -237,12 +261,15 @@ def main() -> None:
     parser.add_argument("--index", required=True, help="SQLite metadata index")
     parser.add_argument("--plan", default="", help="Move plan CSV (optional, shows KEEP/MOVE labels)")
     parser.add_argument("--output", required=True, help="Output HTML file path")
+    parser.add_argument("--max-groups", type=int, default=500,
+                        help="Maximum number of duplicate groups to render (default: 500, prevents huge HTML)")
     args = parser.parse_args()
 
     html = generate_preview_html(
         os.path.abspath(args.duplicates),
         os.path.abspath(args.index),
         os.path.abspath(args.plan) if args.plan else None,
+        max_groups=args.max_groups,
     )
 
     output_path = os.path.abspath(args.output)

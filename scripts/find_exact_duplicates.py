@@ -85,7 +85,7 @@ def main() -> None:
     else:
         duplicates = find_duplicates_csv(index_path)
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True) if os.path.dirname(output_path) else None
     write_duplicates(duplicates, output_path)
 
     num_groups = len(set(d["group_id"] for d in duplicates)) if duplicates else 0

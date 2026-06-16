@@ -53,21 +53,22 @@ def move_photos_to_trash(file_paths: list) -> tuple:
     Uses Photos.app's scripting bridge to properly remove photos,
     keeping the library database consistent.
 
-    Returns (success_count, error_count, messages).
+    Returns (success_count, error_count, messages, deleted_filenames).
     """
     if not PYOBJC_AVAILABLE:
-        return 0, len(file_paths), ["PyObjC not installed — install with: pip install pyobjc-framework-Photos"]
+        return 0, len(file_paths), ["PyObjC not installed — install with: pip install pyobjc-framework-Photos"], set()
 
     try:
         from ScriptingBridge import SBApplication
         photos_app = SBApplication.applicationWithBundleIdentifier_("com.apple.Photos")
 
         if photos_app is None:
-            return 0, len(file_paths), ["Cannot connect to Photos.app — is it running?"]
+            return 0, len(file_paths), ["Cannot connect to Photos.app — is it running?"], set()
 
         success = 0
         errors = 0
         messages = []
+        deleted_filenames = set()
 
         # Build a set of target filenames for quick lookup
         target_filenames = set()
@@ -77,7 +78,7 @@ def move_photos_to_trash(file_paths: list) -> tuple:
         # Get the media items
         media_items = photos_app.mediaItems()
         if media_items is None:
-            return 0, len(file_paths), ["Cannot access Photos.app media items"]
+            return 0, len(file_paths), ["Cannot access Photos.app media items"], set()
 
         # Find and delete matching items
         items_to_delete = []
@@ -90,13 +91,17 @@ def move_photos_to_trash(file_paths: list) -> tuple:
                 continue
 
         if not items_to_delete:
-            return 0, 0, ["No matching items found in Photos.app"]
+            return 0, 0, ["No matching items found in Photos.app"], set()
 
         # Delete items (moves to Recently Deleted in Photos.app)
         for item in items_to_delete:
             try:
                 item.delete()
                 success += 1
+                try:
+                    deleted_filenames.add(item.name())
+                except Exception:
+                    pass
             except Exception as e:
                 errors += 1
                 try:
@@ -105,10 +110,10 @@ def move_photos_to_trash(file_paths: list) -> tuple:
                     name = "unknown"
                 messages.append(f"Error deleting {name}: {e}")
 
-        return success, errors, messages
+        return success, errors, messages, deleted_filenames
 
     except Exception as e:
-        return 0, len(file_paths), [f"PyObjC error: {e}"]
+        return 0, len(file_paths), [f"PyObjC error: {e}"], set()
 
 
 def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
@@ -128,19 +133,22 @@ def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
 
         if photos_paths:
             print(f"Processing {len(photos_paths)} files via Photos.app...")
-            success, errors, messages = move_photos_to_trash(photos_paths)
+            success, errors, messages, deleted_filenames = move_photos_to_trash(photos_paths)
             stats["photos_trashed"] = success
             stats["error"] = errors
             timestamp = datetime.now().isoformat()
-            for i, path in enumerate(photos_paths):
+            for path in photos_paths:
+                basename = os.path.basename(path)
+                # Determine per-file status based on deleted filenames
+                is_deleted = basename in deleted_filenames
                 log_entries.append({
                     "timestamp": timestamp,
                     "action": "photos-trash",
                     "source_path": path,
                     "target_path": "Photos_Trash",
                     "reason": "Photos.app managed file",
-                    "status": "photos_trashed" if i < success else "error",
-                    "message": "; ".join(messages) if messages else "",
+                    "status": "photos_trashed" if is_deleted else "error",
+                    "message": "; ".join(messages) if messages and not is_deleted else "",
                 })
         else:
             print("No files to process via Photos.app.")
@@ -176,7 +184,6 @@ def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
                     os.makedirs(os.path.dirname(dest), exist_ok=True)
                     if os.path.exists(dest):
                         msg = "target exists"
-                        stats["skipped"] += 1
                     else:
                         try:
                             shutil.move(src, dest)
@@ -187,7 +194,7 @@ def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
                             status = "error"
                             stats["error"] += 1
 
-                if status == "skipped" and not msg:
+                if status == "skipped":
                     stats["skipped"] += 1
 
                 log_entries.append({
@@ -391,6 +398,22 @@ def main() -> None:
     print()
 
     apply_plan(plan_path, log_path, mode=args.mode)
+
+    # Save undo record for non-undo operations
+    if not args.undo:
+        try:
+            from apply_move_plan import save_undo_record
+            # Re-read log entries to build undo record
+            log_entries_for_undo = []
+            with open(log_path, newline="", encoding="utf-8-sig") as lf:
+                reader = csv.DictReader(lf)
+                for row in reader:
+                    log_entries_for_undo.append(row)
+            undo_path = save_undo_record(log_entries_for_undo, plan_path)
+            print(f"  Undo record saved: {undo_path}")
+            print(f"  To undo: python3 scripts/apply_move_plan.py --plan {plan_path} --undo")
+        except Exception as e:
+            print(f"  ⚠️  Could not save undo record: {e}")
 
 
 if __name__ == "__main__":

@@ -607,13 +607,16 @@ def detect_android_mount() -> list:
                 android_paths.append(path)
 
     # Also check for MTP-style mounts
-    for entry in os.listdir("/Volumes/"):
-        full = os.path.join("/Volumes/", entry)
-        if os.path.isdir(full):
-            dcim = os.path.join(full, "DCIM")
-            if os.path.isdir(dcim) and entry not in ("Macintosh HD", "VMware Shared Folders"):
-                if full not in android_paths:
-                    android_paths.append(full)
+    try:
+        for entry in os.listdir("/Volumes/"):
+            full = os.path.join("/Volumes/", entry)
+            if os.path.isdir(full):
+                dcim = os.path.join(full, "DCIM")
+                if os.path.isdir(dcim) and entry not in ("Macintosh HD", "VMware Shared Folders"):
+                    if full not in android_paths:
+                        android_paths.append(full)
+    except PermissionError:
+        pass
 
     return android_paths
 
@@ -624,24 +627,27 @@ def detect_external_drives() -> list:
     Returns list of dicts: [{path, name, has_dcim, has_photos}]
     """
     drives = []
-    for entry in os.listdir("/Volumes/"):
-        full = os.path.join("/Volumes/", entry)
-        if not os.path.isdir(full):
-            continue
-        if entry in ("Macintosh HD", "VMware Shared Folders", "Recovery", "com.apple.TimeMachine.localsnapshots"):
-            continue
+    try:
+        for entry in os.listdir("/Volumes/"):
+            full = os.path.join("/Volumes/", entry)
+            if not os.path.isdir(full):
+                continue
+            if entry in ("Macintosh HD", "VMware Shared Folders", "Recovery", "com.apple.TimeMachine.localsnapshots"):
+                continue
 
-        has_dcim = os.path.isdir(os.path.join(full, "DCIM"))
-        has_photos = os.path.isdir(os.path.join(full, "Photos")) or os.path.isdir(os.path.join(full, "photos"))
-        has_pictures = os.path.isdir(os.path.join(full, "Pictures")) or os.path.isdir(os.path.join(full, "pictures"))
+            has_dcim = os.path.isdir(os.path.join(full, "DCIM"))
+            has_photos = os.path.isdir(os.path.join(full, "Photos")) or os.path.isdir(os.path.join(full, "photos"))
+            has_pictures = os.path.isdir(os.path.join(full, "Pictures")) or os.path.isdir(os.path.join(full, "pictures"))
 
-        if has_dcim or has_photos or has_pictures:
-            drives.append({
-                "path": full,
-                "name": entry,
-                "has_dcim": has_dcim,
-                "has_photos": has_photos or has_pictures,
-            })
+            if has_dcim or has_photos or has_pictures:
+                drives.append({
+                    "path": full,
+                    "name": entry,
+                    "has_dcim": has_dcim,
+                    "has_photos": has_photos or has_pictures,
+                })
+    except PermissionError:
+        pass
 
     return drives
 
@@ -729,19 +735,40 @@ def main() -> None:
     print("📷 Step 1/5: Scanning photo library...")
     run_scan(prefs, index_db)
 
+    # Check if scan produced any results
+    if not os.path.exists(index_db):
+        print()
+        print("⚠️  No photos found. Please check the source path and try again.")
+        return
+    try:
+        conn_check = sqlite3.connect(index_db)
+        count_row = conn_check.execute("SELECT COUNT(*) FROM photos").fetchone()
+        conn_check.close()
+        if count_row[0] == 0:
+            print()
+            print("⚠️  No photos found. Please check the source path and try again.")
+            return
+    except sqlite3.OperationalError:
+        print()
+        print("⚠️  No photos found. Please check the source path and try again.")
+        return
+
     # Check iCloud status
     if args.check_icloud or prefs["source_type"] == "photos_library":
-        conn = sqlite3.connect(index_db)
-        conn.row_factory = sqlite3.Row
-        # Count iCloud-only files
-        cursor = conn.execute("""
-            SELECT COUNT(*) FROM photos WHERE photos_cloud_state > 0
-        """)
-        icloud_count = cursor.fetchone()[0]
-        if icloud_count > 0:
-            print(f"  ☁️  {icloud_count} files may be iCloud-only (not fully downloaded)")
-            print(f"     These files will be skipped during move operations.")
-        conn.close()
+        try:
+            conn = sqlite3.connect(index_db)
+            conn.row_factory = sqlite3.Row
+            # Count iCloud-only files
+            cursor = conn.execute("""
+                SELECT COUNT(*) FROM photos WHERE photos_cloud_state > 0
+            """)
+            icloud_count = cursor.fetchone()[0]
+            if icloud_count > 0:
+                print(f"  ☁️  {icloud_count} files may be iCloud-only (not fully downloaded)")
+                print(f"     These files will be skipped during move operations.")
+            conn.close()
+        except sqlite3.OperationalError:
+            pass  # photos_cloud_state column may not exist in file-system scans
 
     # Step 2-5: Route by organize mode
     mode = prefs.get("mode", "dedup")
