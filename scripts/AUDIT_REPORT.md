@@ -722,3 +722,25 @@ def read_duplicates(dups_path: str) -> dict:
 |------|------|
 | **隐私风险评估** | `detect_privacy_risks.py` — 检测身份证、银行卡、护照等敏感文档，支持 JSON/CSV/文本报告 |
 | **CNN 深度学习去重** | `find_similar_photos.py` 新增 `--detect-cnn` 模式，MobileNet-V3 特征提取，PyTorch/ONNX 双后端优雅降级 |
+
+### 误报修复（2026-06-16 第二轮）
+
+| 问题 | 原因 | 修复方式 |
+|------|------|----------|
+| pHash 全零哈希分组 | 小图标/纯色图产生 `0000000000000000`，导致不相关文件分在一组 | SQL 查询和 Python 层双重过滤全零 phash |
+| pHash 低熵哈希分组 | 1-3 位 set bits 的 phash（如 `8000000000000000`）信息量不足 | 新增 `_is_low_entropy_phash()` 函数，过滤 bits < 4 或 > 60 的哈希 |
+| Cross-format 误报 | 仅靠 aspect ratio + dimensions + phash 就把不同内容的 HEIC/JPEG 分组 | 添加文件大小比率检查（>8x 差异视为不同内容） |
+| Scaled 误报 | 缩放检测中 bytes-per-pixel 差异极大的图像被分在一组 | 添加 bpp 比率检查（>8x 差异视为不同内容） |
+| Cross-format 阈值过严 | 5.0x 文件大小比率阈值把 PNG/JPEG 同内容对过滤掉 | 放宽至 8.0x（PNG 无损压缩可比 JPEG 小 5-6 倍） |
+| `_is_scaled_pair` 同尺寸 bug | 800x1200 vs 800x1200 被当作"1x缩放"通过检测 | 添加 `w1==w2 and h1==h2` 前置检查，同尺寸直接返回 False |
+| 小图标 phash 误报 | 16x16 图标产生有意义的 phash 但匹配无实际意义 | 新增 `PHASH_MIN_PIXELS=1024` 阈值，SQL + Python 双层过滤 |
+
+### 误报修复（2026-06-16 第四轮）
+
+| 问题 | 原因 | 修复方式 |
+|------|------|----------|
+| `_is_scaled_pair` ratio 归一化 bug | `ratio = min(rw, rh)` 对小图→大图方向得到 ratio < 1.0，但简单分数检查只匹配 ≥ 1.0（`denom/numer` 且 `numer ≤ denom`），导致2x缩放识别失败 | 改为 `ratio = max(rw, rh)` + `< 1.0` 时取倒数，确保 ratio ≥ 1.0 |
+| Scaled union-find 传递性误报 | 不同照片通过 "hub" 图像被传递性链接（A↔Hub↔C → A和C同组） | 改用 pair-collection + selective union，仅 union dist ≤ 3 的对（SCALED_UNION_THRESHOLD=3） |
+| Cross-format union-find 传递性误报 | 与 scaled 相同的传递链问题（PNG↔JPEG_A + PNG↔JPEG_B → A、B同组） | 改用 pair-collection + selective union，仅 union dist ≤ 1 的对（near-exact match） |
+| Cross-format 阈值过松 | `CROSS_FORMAT_PHASH_THRESHOLD=12` 允许太多误匹配 | 降至 5（同一照片不同格式 phash 差异通常 ≤ 2） |
+| Cross-format 文件大小比率 | 5x→8x→10x 逐步放宽，PNG 无损可比 JPEG 大 5-6 倍 | 最终设为 10.0x |

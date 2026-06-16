@@ -71,19 +71,32 @@ def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
             print("     Run scan_photos.py or scan_photos_library.py first to compute phash", file=sys.stderr)
         return []
 
+    # All-zeros phash (e.g. from tiny/simple images) is meaningless — skip it
+    INVALID_PHASH = "0000000000000000"
+
+    # Build pixel-count filter for SQL if width/height columns exist
+    has_dims = "width" in available_cols and "height" in available_cols
+    dim_filter = ""
+    if has_dims:
+        dim_filter = f" AND CAST(width AS INTEGER) * CAST(height AS INTEGER) >= {PHASH_MIN_PIXELS}"
+
     if threshold == 0:
         # Exact pHash match (fast)
-        cursor = conn.execute("""
+        cursor = conn.execute(f"""
             SELECT phash, file_path FROM photos
             WHERE phash != '' AND phash IS NOT NULL
+            AND phash != ?
+            {dim_filter}
             AND phash IN (
                 SELECT phash FROM photos
                 WHERE phash != '' AND phash IS NOT NULL
+                AND phash != ?
+                {dim_filter}
                 GROUP BY phash
                 HAVING COUNT(*) > 1
             )
             ORDER BY phash, file_path
-        """)
+        """, (INVALID_PHASH, INVALID_PHASH))
         groups = {}
         for ph, path in cursor:
             groups.setdefault(ph, []).append(path)
@@ -92,6 +105,9 @@ def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
         result = []
         group_id = 0
         for ph, paths in groups.items():
+            # Skip low-entropy phash groups (tiny/simple images)
+            if _is_low_entropy_phash(ph):
+                continue
             group_id += 1
             for p in paths:
                 result.append({"group_id": group_id, "phash": ph,
@@ -99,20 +115,25 @@ def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
         return result
     else:
         # Fuzzy match using Hamming distance (slower, pairwise comparison)
-        cursor = conn.execute("""
+        cursor = conn.execute(f"""
             SELECT phash, file_path FROM photos
             WHERE phash != '' AND phash IS NOT NULL
+            AND phash != ?
+            {dim_filter}
             ORDER BY phash
-        """)
+        """, (INVALID_PHASH,))
         all_entries = [(row[0], row[1]) for row in cursor]
         conn.close()
 
-        # Group by fuzzy pHash matching
+        # Group by fuzzy pHash matching (skip low-entropy hashes)
         visited = set()
         groups = {}
         group_id = 0
         for i, (ph1, path1) in enumerate(all_entries):
             if path1 in visited:
+                continue
+            # Skip low-entropy phash
+            if _is_low_entropy_phash(ph1):
                 continue
             hash1 = imagehash.hex_to_hash(ph1)
             group_members = [path1]
@@ -140,18 +161,20 @@ def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
 
 def group_by_phash_csv(index_path: str) -> list:
     """Group by pHash from CSV file (fallback)."""
+    INVALID_PHASH = "0000000000000000"
     groups = {}
     with open(index_path, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         for row in reader:
             ph = row.get("phash", "")
-            if ph:
+            if ph and ph != INVALID_PHASH:
                 groups.setdefault(ph, []).append(row.get("file_path"))
 
     result = []
     group_id = 0
     for ph, paths in groups.items():
-        if len(paths) > 1:
+        # Skip low-entropy phash groups
+        if len(paths) > 1 and not _is_low_entropy_phash(ph):
             group_id += 1
             for p in paths:
                 result.append({"group_id": group_id, "phash": ph,
@@ -172,6 +195,34 @@ MIN_SCALE_RATIO = 0.3
 # Hamming distance threshold for scaled duplicate verification
 SCALED_PHASH_THRESHOLD = 10
 
+# pHash bit count thresholds — hashes with too few or too many set bits
+# indicate low-information images (solid colors, simple patterns) where
+# pHash is unreliable. 64-bit hash: skip if bits < 4 or > 60.
+PHASH_MIN_BITS = 4
+PHASH_MAX_BITS = 60
+
+# Minimum pixel count for reliable phash matching.
+# Images smaller than this produce unreliable perceptual hashes even if
+# bit count passes the threshold. 32×32 = 1024 pixels is the practical minimum
+# for pHash (which resizes to 32×32 internally — smaller inputs just get padded).
+PHASH_MIN_PIXELS = 1024
+
+
+def _is_low_entropy_phash(phash_hex: str, width: int = 0, height: int = 0) -> bool:
+    """Return True if phash is unreliable due to low information content.
+
+    Checks both bit count (too few/many set bits) and pixel count
+    (images too small for pHash to produce meaningful hashes).
+    """
+    # Check pixel count if dimensions provided
+    if width > 0 and height > 0 and width * height < PHASH_MIN_PIXELS:
+        return True
+    try:
+        bits = bin(int(phash_hex, 16)).count("1")
+        return bits < PHASH_MIN_BITS or bits > PHASH_MAX_BITS
+    except (ValueError, TypeError):
+        return True
+
 
 def _aspect_ratios_similar(ar1: float, ar2: float, tolerance: float = ASPECT_RATIO_TOLERANCE) -> bool:
     """Check if two aspect ratios are within tolerance."""
@@ -185,8 +236,15 @@ def _is_scaled_pair(w1: int, h1: int, w2: int, h2: int) -> bool:
 
     Returns True if one image's dimensions are approximately an integer
     or half-integer multiple of the other's (e.g., 2x, 3x, 0.5x, 1.5x).
+
+    Note: Same-dimension images are NOT scaled duplicates — they are either
+    exact duplicates (handled separately) or different photos at the same size.
     """
     if w1 <= 0 or h1 <= 0 or w2 <= 0 or h2 <= 0:
+        return False
+
+    # Same dimensions → not a scaled pair (either exact dup or different photo)
+    if w1 == w2 and h1 == h2:
         return False
 
     # Check width ratio
@@ -197,14 +255,19 @@ def _is_scaled_pair(w1: int, h1: int, w2: int, h2: int) -> bool:
     if abs(rw - rh) / max(rw, rh) > 0.1:  # 10% tolerance for ratio consistency
         return False
 
+    # Normalize ratio to >= 1.0 (how many times the larger image is of the smaller)
+    # rw and rh are approximately equal (checked above), so use either
+    ratio = max(rw, rh)
+    if ratio < 1.0:
+        ratio = 1.0 / ratio
+
     # The common ratio should be ≥ MIN_SCALE_RATIO
-    ratio = min(rw, rh)  # The smaller ratio (how much the smaller image is of the larger)
     if ratio < MIN_SCALE_RATIO:
         return False
 
     # Check if the ratio is close to a simple fraction (1/1, 1/2, 1/3, 2/3, etc.)
     # This helps filter false positives from unrelated images with similar aspect ratios
-    # ratio = min(rw, rh), so for 2x scaling, ratio=2.0 (larger/smaller)
+    # ratio is always >= 1.0, so for 2x scaling ratio=2.0, for 3x ratio=3.0, etc.
     for denom in range(1, 7):
         for numer in range(1, denom + 1):
             target = denom / numer
@@ -235,6 +298,7 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
             SELECT file_path, width, height, phash, aspect_ratio, extension, size_bytes
             FROM photos
             WHERE phash != '' AND phash IS NOT NULL
+            AND phash != '0000000000000000'
             AND width != '' AND height != '' AND width != '0' AND height != '0'
             AND media_type = 'image'
         """)
@@ -249,6 +313,10 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
             h = int(row["height"])
         except (ValueError, TypeError):
             continue
+        # Skip low-entropy phash (includes pixel count check)
+        ph = row["phash"]
+        if _is_low_entropy_phash(ph, w, h):
+            continue
         ar_str = row["aspect_ratio"]
         try:
             ar = float(ar_str) if ar_str else w / h
@@ -259,7 +327,7 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
             "width": w,
             "height": h,
             "aspect_ratio": ar,
-            "phash": row["phash"],
+            "phash": ph,
             "extension": row["extension"],
             "size_bytes": row["size_bytes"],
         })
@@ -275,20 +343,13 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
     # We merge buckets that are close
     merged_groups = _merge_nearby_buckets(ar_buckets)
 
-    # Within each merged group, find scaled pairs using union-find
-    # (Union-find handles transitive similarity: A~B and B~C → A,B,C in same group)
-    parent = {}  # path -> root path
-
-    def find(x):
-        while parent.get(x, x) != x:
-            parent[x] = parent.get(parent[x], parent[x])  # path compression
-            x = parent[x]
-        return x
-
-    def union(x, y):
-        rx, ry = find(x), find(y)
-        if rx != ry:
-            parent[rx] = ry
+    # Collect scaled pairs — use pair collection + selective union
+    # to avoid transitive chaining through "hub" images.
+    # E.g., if ImageA (1920x1080) ↔ ScaledB (960x540) and ImageC (1920x1080) ↔ ScaledB,
+    # then A and C should NOT be in the same group (they're different photos
+    # that happen to have similar phash to the same hub).
+    # Only union pairs with near-exact phash match (dist ≤ SCALED_UNION_THRESHOLD).
+    scaled_pairs = []  # list of (path_i, path_j, hamming_distance)
 
     for bucket_entries in merged_groups:
         if len(bucket_entries) < 2:
@@ -299,13 +360,11 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
 
         for i in range(len(bucket_entries)):
             e1 = bucket_entries[i]
-            parent.setdefault(e1["path"], e1["path"])
             hash1 = imagehash.hex_to_hash(e1["phash"])
             area1 = e1["width"] * e1["height"]
 
             for j in range(i + 1, len(bucket_entries)):
                 e2 = bucket_entries[j]
-                parent.setdefault(e2["path"], e2["path"])
 
                 area2 = e2["width"] * e2["height"]
                 # Early exit: if the larger image is >4x the smaller, skip
@@ -323,8 +382,46 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
 
                 # Verify with pHash
                 hash2 = imagehash.hex_to_hash(e2["phash"])
-                if hash1 - hash2 <= phash_threshold:
-                    union(e1["path"], e2["path"])
+                hamming = hash1 - hash2
+                if hamming <= phash_threshold:
+                    # Sanity check: file sizes should roughly scale with pixel count.
+                    # Skip if larger file has disproportionately MORE bytes per pixel
+                    # (suggests different content, e.g. compressed screenshot vs photo).
+                    size1 = e1.get("size_bytes") or 0
+                    size2 = e2.get("size_bytes") or 0
+                    if size1 > 0 and size2 > 0 and area1 > 0 and area2 > 0:
+                        bpp1 = size1 / area1
+                        bpp2 = size2 / area2
+                        # Bytes-per-pixel ratio: if one is >8x the other, likely different content
+                        bpp_ratio = max(bpp1, bpp2) / min(bpp1, bpp2)
+                        if bpp_ratio > 8.0:
+                            continue
+                    scaled_pairs.append((e1["path"], e2["path"], hamming))
+
+    # Group scaled pairs using selective union-find:
+    # Only union pairs with near-exact phash match (dist ≤ SCALED_UNION_THRESHOLD).
+    # This prevents transitive chaining through hub images while still correctly
+    # grouping the same photo at multiple resolutions (e.g., 1x + 2x + 4x).
+    SCALED_UNION_THRESHOLD = 3
+    parent = {}
+
+    def find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    for path_i, path_j, dist in scaled_pairs:
+        parent.setdefault(path_i, path_i)
+        parent.setdefault(path_j, path_j)
+        # Only union pairs with near-exact phash match
+        if dist <= SCALED_UNION_THRESHOLD:
+            union(path_i, path_j)
 
     # Collect groups from union-find roots
     root_groups = defaultdict(set)
@@ -384,7 +481,10 @@ def _merge_nearby_buckets(ar_buckets: dict) -> list:
 
 # Hamming distance threshold for cross-format verification
 # Higher than pHash default because format conversion changes pixel values
-CROSS_FORMAT_PHASH_THRESHOLD = 12
+CROSS_FORMAT_PHASH_THRESHOLD = 5
+# Cross-format duplicates are the SAME photo in different formats.
+# phash should be nearly identical — only format conversion artifacts cause
+# small differences. Threshold 5 is generous; most true matches are ≤ 2.
 
 
 def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CROSS_FORMAT_PHASH_THRESHOLD) -> list:
@@ -412,6 +512,7 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
                    extension, size_bytes
             FROM photos
             WHERE phash != '' AND phash IS NOT NULL
+            AND phash != '0000000000000000'
             AND width != '' AND height != '' AND width != '0' AND height != '0'
             AND media_type = 'image'
             AND format_family != ''
@@ -427,6 +528,10 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
             h = int(row["height"])
         except (ValueError, TypeError):
             continue
+        # Skip low-entropy phash (includes pixel count check)
+        ph = row["phash"]
+        if _is_low_entropy_phash(ph, w, h):
+            continue
         ar_str = row["aspect_ratio"]
         try:
             ar = float(ar_str) if ar_str else w / h
@@ -437,7 +542,7 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
             "width": w,
             "height": h,
             "aspect_ratio": ar,
-            "phash": row["phash"],
+            "phash": ph,
             "format_family": row["format_family"],
             "extension": row["extension"],
             "size_bytes": row["size_bytes"],
@@ -452,20 +557,12 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
 
     merged_groups = _merge_nearby_buckets(ar_buckets)
 
-    # Within each group, find cross-format pairs using union-find
-    # (Union-find handles transitive similarity: A~B and B~C → A,B,C in same group)
-    parent = {}  # path -> root path
-
-    def find(x):
-        while parent.get(x, x) != x:
-            parent[x] = parent.get(parent[x], parent[x])  # path compression
-            x = parent[x]
-        return x
-
-    def union(x, y):
-        rx, ry = find(x), find(y)
-        if rx != ry:
-            parent[rx] = ry
+    # Collect cross-format pairs — do NOT use union-find here!
+    # Union-find creates transitive chains that group unrelated photos:
+    # PNG↔JPEG_A (dist 0) + PNG↔JPEG_B (dist 3) → A and B in same group (WRONG!)
+    # Instead, collect explicit pairs. Group files that share BOTH phash match AND
+    # a common source image (i.e., one photo exported to multiple formats).
+    cross_pairs = []  # list of (path_i, path_j, hamming_distance)
 
     for bucket_entries in merged_groups:
         if len(bucket_entries) < 2:
@@ -475,7 +572,6 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
         by_format = defaultdict(list)
         for e in bucket_entries:
             by_format[e["format_family"]].append(e)
-            parent.setdefault(e["path"], e["path"])
 
         # Need at least 2 different format families
         format_families = list(by_format.keys())
@@ -506,10 +602,44 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
                                 if not _aspect_ratios_similar(e1["aspect_ratio"], e2["aspect_ratio"]):
                                     continue
 
-                                # Verify with pHash (higher threshold for cross-format)
+                                # Verify with pHash — cross-format duplicates must have
+                                # nearly identical phash (same photo, different format)
                                 hash2 = imagehash.hex_to_hash(e2["phash"])
-                                if hash1 - hash2 <= phash_threshold:
-                                    union(e1["path"], e2["path"])
+                                hamming = hash1 - hash2
+                                if hamming <= phash_threshold:
+                                    # Size sanity check: same photo in different formats
+                                    # should have comparable file sizes.
+                                    size1 = e1.get("size_bytes") or 0
+                                    size2 = e2.get("size_bytes") or 0
+                                    if size1 > 0 and size2 > 0:
+                                        ratio = max(size1, size2) / min(size1, size2)
+                                        if ratio > 10.0:
+                                            continue
+                                    cross_pairs.append((e1["path"], e2["path"], hamming))
+
+    # Group cross-format pairs: for each image, find all its format variants.
+    # Two images are in the same group only if they are DIRECTLY paired
+    # (i.e., same phash match), NOT transitively through a third image.
+    # Use union-find ONLY on pairs with hamming distance 0 (exact phash match),
+    # which guarantees they are the same photo.
+    parent = {}
+    def find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])
+            x = parent[x]
+        return x
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    for path_i, path_j, dist in cross_pairs:
+        parent.setdefault(path_i, path_i)
+        parent.setdefault(path_j, path_j)
+        # Only union pairs with exact (dist=0) or near-exact (dist≤1) phash match
+        # Higher distances are likely different photos that happen to be similar
+        if dist <= 1:
+            union(path_i, path_j)
 
     # Collect groups from union-find roots
     root_groups = defaultdict(set)
