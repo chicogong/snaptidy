@@ -462,6 +462,11 @@ def import_via_photoscript(file_paths: list, album_name: str = None,
         return 0, len(file_paths), [], [f"photoscript error: {e}"]
 
 
+def _escape_applescript(s: str) -> str:
+    """Escape a string for safe embedding in AppleScript double-quoted strings."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def import_via_osascript(file_paths: list, album_name: str = None,
                          skip_duplicates: bool = True) -> tuple:
     """Import files using osascript (AppleScript subprocess).
@@ -477,20 +482,22 @@ def import_via_osascript(file_paths: list, album_name: str = None,
             errors.append(f"File not found: {file_path}")
             continue
 
-        # Build AppleScript
+        # Build AppleScript (with proper escaping to prevent injection)
+        esc_path = _escape_applescript(file_path)
         if album_name:
+            esc_album = _escape_applescript(album_name)
             skip_str = "yes" if skip_duplicates else "no"
             script = f'''
             tell application "Photos"
-                set targetAlbum to album "{album_name}"
-                import POSIX file "{file_path}" into targetAlbum skip check duplicates {skip_str}
+                set targetAlbum to album "{esc_album}"
+                import POSIX file "{esc_path}" into targetAlbum skip check duplicates {skip_str}
             end tell
             '''
         else:
             skip_str = "yes" if skip_duplicates else "no"
             script = f'''
             tell application "Photos"
-                import POSIX file "{file_path}" skip check duplicates {skip_str}
+                import POSIX file "{esc_path}" skip check duplicates {skip_str}
             end tell
             '''
 
@@ -576,9 +583,10 @@ def import_via_scriptingbridge(file_paths: list, album_name: str = None,
 
 def create_album_osascript(album_name: str) -> bool:
     """Create a new album in Photos.app via osascript."""
+    esc_album = _escape_applescript(album_name)
     script = f'''
     tell application "Photos"
-        make new album named "{album_name}"
+        make new album named "{esc_album}"
     end tell
     '''
     try:
@@ -839,20 +847,22 @@ def prepare_shared_album_workflow(album_name: str, keyword: str = "snaptidy-shar
 
     This reduces the workflow from ~10 steps to just 1 drag operation.
     """
+    esc_album = _escape_applescript(album_name)
+    esc_keyword = _escape_applescript(keyword)
     script = f'''
     tell application "Photos"
         activate
-        set targetAlbum to album "{album_name}"
+        set targetAlbum to album "{esc_album}"
         set thePhotos to every media item of targetAlbum
 
         if (count of thePhotos) = 0 then
-            display dialog "No photos found in album \\"{album_name}\\""
+            display dialog "No photos found in album \\"{esc_album}\\""
             return
         end if
 
         -- Add keyword for easy identification
         repeat with aPhoto in thePhotos
-            set keywords of aPhoto to (keywords of aPhoto) & "{keyword}"
+            set keywords of aPhoto to (keywords of aPhoto) & "{esc_keyword}"
         end repeat
 
         -- Select all photos in the album

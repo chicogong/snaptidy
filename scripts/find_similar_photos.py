@@ -29,6 +29,30 @@ try:
 except ImportError:
     IMAGEHASH_AVAILABLE = False
 
+# Optional: deep learning feature extraction (MobileNet-V3 / ResNet)
+try:
+    import torch
+    import torchvision.transforms as transforms
+    import torchvision.models as models
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+
+# Optional: ONNX Runtime (lighter alternative to PyTorch)
+try:
+    import onnxruntime as ort
+    import numpy as np
+    ONNX_AVAILABLE = True
+except ImportError:
+    ONNX_AVAILABLE = False
+
+# Optional: PIL for image loading in CNN mode
+try:
+    from PIL import Image as PILImage
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # Mode 1: pHash matching (original behavior)
@@ -37,6 +61,15 @@ except ImportError:
 def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
     """Group by pHash from SQLite database."""
     conn = sqlite3.connect(index_path)
+
+    # Check if phash column exists
+    available_cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+    if "phash" not in available_cols:
+        conn.close()
+        if IMAGEHASH_AVAILABLE:
+            print("  ⚠️  phash column not found in index — pHash detection skipped", file=sys.stderr)
+            print("     Run scan_photos.py or scan_photos_library.py first to compute phash", file=sys.stderr)
+        return []
 
     if threshold == 0:
         # Exact pHash match (fast)
@@ -189,17 +222,26 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
     2. Within each group, check dimension ratio for scaling relationship
     3. Verify with pHash similarity
     """
+    if not IMAGEHASH_AVAILABLE:
+        print("  ⚠️  imagehash not installed — scaled detection skipped", file=sys.stderr)
+        return []
+
     conn = sqlite3.connect(index_path)
     conn.row_factory = sqlite3.Row
 
     # Load all images with dimensions and phash
-    cursor = conn.execute("""
-        SELECT file_path, width, height, phash, aspect_ratio, extension, size_bytes
-        FROM photos
-        WHERE phash != '' AND phash IS NOT NULL
-        AND width != '' AND height != '' AND width != '0' AND height != '0'
-        AND media_type = 'image'
-    """)
+    try:
+        cursor = conn.execute("""
+            SELECT file_path, width, height, phash, aspect_ratio, extension, size_bytes
+            FROM photos
+            WHERE phash != '' AND phash IS NOT NULL
+            AND width != '' AND height != '' AND width != '0' AND height != '0'
+            AND media_type = 'image'
+        """)
+    except sqlite3.OperationalError as e:
+        conn.close()
+        print(f"  ⚠️  Scaled detection requires complete metadata (width, height, phash, aspect_ratio): {e}", file=sys.stderr)
+        return []
     entries = []
     for row in cursor:
         try:
@@ -233,10 +275,20 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
     # We merge buckets that are close
     merged_groups = _merge_nearby_buckets(ar_buckets)
 
-    # Within each merged group, find scaled pairs
-    visited = set()
-    groups = {}
-    group_id = 0
+    # Within each merged group, find scaled pairs using union-find
+    # (Union-find handles transitive similarity: A~B and B~C → A,B,C in same group)
+    parent = {}  # path -> root path
+
+    def find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])  # path compression
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
 
     for bucket_entries in merged_groups:
         if len(bucket_entries) < 2:
@@ -247,16 +299,13 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
 
         for i in range(len(bucket_entries)):
             e1 = bucket_entries[i]
-            if e1["path"] in visited:
-                continue
+            parent.setdefault(e1["path"], e1["path"])
             hash1 = imagehash.hex_to_hash(e1["phash"])
-            group_members = [e1]
             area1 = e1["width"] * e1["height"]
 
             for j in range(i + 1, len(bucket_entries)):
                 e2 = bucket_entries[j]
-                if e2["path"] in visited:
-                    continue
+                parent.setdefault(e2["path"], e2["path"])
 
                 area2 = e2["width"] * e2["height"]
                 # Early exit: if the larger image is >4x the smaller, skip
@@ -275,21 +324,31 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
                 # Verify with pHash
                 hash2 = imagehash.hex_to_hash(e2["phash"])
                 if hash1 - hash2 <= phash_threshold:
-                    group_members.append(e2)
-                    visited.add(e2["path"])
+                    union(e1["path"], e2["path"])
 
-            if len(group_members) > 1:
-                group_id += 1
-                groups[group_id] = group_members
-                visited.add(e1["path"])
+    # Collect groups from union-find roots
+    root_groups = defaultdict(set)
+    for path in parent:
+        root_groups[find(path)].add(path)
 
+    # Only keep groups with 2+ members
     result = []
-    for gid, members in groups.items():
-        for m in members:
+    group_id = 0
+    for root, members in sorted(root_groups.items()):
+        if len(members) < 2:
+            continue
+        group_id += 1
+        for path in sorted(members):
+            # Look up phash from entries
+            phash_val = ""
+            for e in entries:
+                if e["path"] == path:
+                    phash_val = e["phash"]
+                    break
             result.append({
-                "group_id": gid,
-                "phash": m["phash"],
-                "file_path": m["path"],
+                "group_id": group_id,
+                "phash": phash_val,
+                "file_path": path,
                 "match_type": "scaled",
             })
     return result
@@ -339,19 +398,28 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
     3. Check if dimensions are very close (within 2 pixels — format conversion may crop 1px)
     4. Verify with pHash similarity
     """
+    if not IMAGEHASH_AVAILABLE:
+        print("  ⚠️  imagehash not installed — cross-format detection skipped", file=sys.stderr)
+        return []
+
     conn = sqlite3.connect(index_path)
     conn.row_factory = sqlite3.Row
 
     # Load all images with dimensions and phash
-    cursor = conn.execute("""
-        SELECT file_path, width, height, phash, aspect_ratio, format_family,
-               extension, size_bytes
-        FROM photos
-        WHERE phash != '' AND phash IS NOT NULL
-        AND width != '' AND height != '' AND width != '0' AND height != '0'
-        AND media_type = 'image'
-        AND format_family != ''
-    """)
+    try:
+        cursor = conn.execute("""
+            SELECT file_path, width, height, phash, aspect_ratio, format_family,
+                   extension, size_bytes
+            FROM photos
+            WHERE phash != '' AND phash IS NOT NULL
+            AND width != '' AND height != '' AND width != '0' AND height != '0'
+            AND media_type = 'image'
+            AND format_family != ''
+        """)
+    except sqlite3.OperationalError as e:
+        conn.close()
+        print(f"  ⚠️  Cross-format detection requires complete metadata (width, height, phash, format_family): {e}", file=sys.stderr)
+        return []
     entries = []
     for row in cursor:
         try:
@@ -384,10 +452,20 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
 
     merged_groups = _merge_nearby_buckets(ar_buckets)
 
-    # Within each group, find cross-format pairs
-    visited = set()
-    groups = {}
-    group_id = 0
+    # Within each group, find cross-format pairs using union-find
+    # (Union-find handles transitive similarity: A~B and B~C → A,B,C in same group)
+    parent = {}  # path -> root path
+
+    def find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])  # path compression
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
 
     for bucket_entries in merged_groups:
         if len(bucket_entries) < 2:
@@ -397,6 +475,7 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
         by_format = defaultdict(list)
         for e in bucket_entries:
             by_format[e["format_family"]].append(e)
+            parent.setdefault(e["path"], e["path"])
 
         # Need at least 2 different format families
         format_families = list(by_format.keys())
@@ -404,7 +483,6 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
             continue
 
         # Compare across format families
-        # Optimization: index by (w, h) for O(1) dimension lookup
         for fi in range(len(format_families)):
             for fj in range(fi + 1, len(format_families)):
                 fam_i = format_families[fi]
@@ -416,10 +494,7 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
                     dim_index_j[(e2["width"], e2["height"])].append(e2)
 
                 for e1 in by_format[fam_i]:
-                    if e1["path"] in visited:
-                        continue
                     hash1 = imagehash.hex_to_hash(e1["phash"])
-                    group_members = [e1]
 
                     # Only check entries in fam_j with matching dimensions
                     dim_tolerance = max(2, round(e1["width"] * 0.005))
@@ -427,9 +502,6 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
                         for dh in range(-dim_tolerance, dim_tolerance + 1):
                             key = (e1["width"] + dw, e1["height"] + dh)
                             for e2 in dim_index_j.get(key, []):
-                                if e2["path"] in visited:
-                                    continue
-
                                 # Check aspect ratio similarity
                                 if not _aspect_ratios_similar(e1["aspect_ratio"], e2["aspect_ratio"]):
                                     continue
@@ -437,21 +509,35 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
                                 # Verify with pHash (higher threshold for cross-format)
                                 hash2 = imagehash.hex_to_hash(e2["phash"])
                                 if hash1 - hash2 <= phash_threshold:
-                                    group_members.append(e2)
-                                    visited.add(e2["path"])
+                                    union(e1["path"], e2["path"])
 
-                    if len(group_members) > 1:
-                        group_id += 1
-                        groups[group_id] = group_members
-                        visited.add(e1["path"])
+    # Collect groups from union-find roots
+    root_groups = defaultdict(set)
+    for path in parent:
+        root_groups[find(path)].add(path)
 
+    # Only keep groups with 2+ members and at least 2 format families
     result = []
-    for gid, members in groups.items():
-        for m in members:
+    group_id = 0
+    path_to_entry = {e["path"]: e for e in entries}
+    for root, members in sorted(root_groups.items()):
+        if len(members) < 2:
+            continue
+        # Verify at least 2 format families in this group
+        families_in_group = set()
+        for p in members:
+            e = path_to_entry.get(p)
+            if e:
+                families_in_group.add(e["format_family"])
+        if len(families_in_group) < 2:
+            continue
+        group_id += 1
+        for path in sorted(members):
+            e = path_to_entry.get(path, {})
             result.append({
-                "group_id": gid,
-                "phash": m["phash"],
-                "file_path": m["path"],
+                "group_id": group_id,
+                "phash": e.get("phash", ""),
+                "file_path": path,
                 "match_type": "cross_format",
             })
     return result
@@ -471,14 +557,19 @@ def detect_bursts_db(index_path: str) -> list:
     conn.row_factory = sqlite3.Row
 
     # Find photos with subsec_time data
-    cursor = conn.execute("""
-        SELECT file_path, exif_datetime, subsec_time, phash, extension
-        FROM photos
-        WHERE exif_datetime != '' AND exif_datetime IS NOT NULL
-        AND subsec_time != '' AND subsec_time IS NOT NULL
-        AND media_type = 'image'
-        ORDER BY exif_datetime, subsec_time
-    """)
+    try:
+        cursor = conn.execute("""
+            SELECT file_path, exif_datetime, subsec_time, phash, extension
+            FROM photos
+            WHERE exif_datetime != '' AND exif_datetime IS NOT NULL
+            AND subsec_time != '' AND subsec_time IS NOT NULL
+            AND media_type = 'image'
+            ORDER BY exif_datetime, subsec_time
+        """)
+    except sqlite3.OperationalError as e:
+        conn.close()
+        print(f"  ⚠️  Burst detection requires EXIF metadata (exif_datetime, subsec_time): {e}", file=sys.stderr)
+        return []
     entries = []
     for row in cursor:
         entries.append({
@@ -529,10 +620,312 @@ def detect_bursts_db(index_path: str) -> list:
 
 
 # ---------------------------------------------------------------------------
+# Mode 5: CNN deep learning dedup (MobileNet-V3 / ResNet feature extraction)
+# ---------------------------------------------------------------------------
+
+# Feature vector dimension for MobileNet-V3
+CNN_FEATURE_DIM = 1024 if TORCH_AVAILABLE else 0
+
+# Lazy-loaded model
+_cnn_model = None
+_cnn_transform = None
+_onnx_session = None
+
+
+def _get_cnn_model():
+    """Lazy-load MobileNet-V3 model for feature extraction."""
+    global _cnn_model, _cnn_transform
+
+    if _cnn_model is not None:
+        return _cnn_model, _cnn_transform
+
+    if not TORCH_AVAILABLE:
+        return None, None
+
+    try:
+        # Use MobileNet-V3 Small for efficiency (4.2MB vs 21MB for Large)
+        model = models.mobilenet_v3_small(weights=models.MobileNet_V3_Small_Weights.DEFAULT)
+        model.eval()
+
+        # Remove the classifier head — we only need features
+        # The last linear layer is at model.classifier[3]
+        # Feature output from avgpool is 576-dim for Small
+        feature_extractor = torch.nn.Sequential(
+            model.features,
+            model.avgpool,
+            torch.nn.Flatten(),
+        )
+        feature_extractor.eval()
+
+        # Standard ImageNet preprocessing
+        transform = transforms.Compose([
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225]),
+        ])
+
+        _cnn_model = feature_extractor
+        _cnn_transform = transform
+        return _cnn_model, _cnn_transform
+
+    except Exception as e:
+        print(f"  ⚠️  Failed to load MobileNet-V3: {e}", file=sys.stderr)
+        return None, None
+
+
+def _get_onnx_session():
+    """Lazy-load ONNX Runtime session for MobileNet-V3 feature extraction."""
+    global _onnx_session
+
+    if _onnx_session is not None:
+        return _onnx_session
+
+    if not ONNX_AVAILABLE or not PIL_AVAILABLE:
+        return None
+
+    # ONNX model path — check common locations
+    onnx_paths = [
+        os.path.expanduser("~/.snaptidy/models/mobilenetv3_small.onnx"),
+        os.path.join(os.path.dirname(__file__), "models", "mobilenetv3_small.onnx"),
+    ]
+
+    onnx_path = None
+    for p in onnx_paths:
+        if os.path.exists(p):
+            onnx_path = p
+            break
+
+    if not onnx_path:
+        return None
+
+    try:
+        sess = ort.InferenceSession(onnx_path,
+                                     providers=["CPUExecutionProvider"])
+        _onnx_session = sess
+        return _onnx_session
+    except Exception as e:
+        print(f"  ⚠️  Failed to load ONNX model: {e}", file=sys.stderr)
+        return None
+
+
+def _extract_feature_pytorch(image_path: str) -> list:
+    """Extract feature vector from an image using PyTorch MobileNet-V3.
+
+    Returns 576-dim feature vector (MobileNet-V3 Small) or empty list on error.
+    """
+    model, transform = _get_cnn_model()
+    if model is None or transform is None:
+        return []
+
+    try:
+        img = PILImage.open(image_path).convert("RGB")
+        tensor = transform(img).unsqueeze(0)  # [1, 3, 224, 224]
+
+        with torch.no_grad():
+            features = model(tensor)  # [1, 576]
+
+        # Normalize the feature vector
+        vec = features.squeeze(0).numpy().tolist()
+        mag = math.sqrt(sum(v * v for v in vec))
+        if mag > 0:
+            vec = [v / mag for v in vec]
+        return vec
+
+    except Exception:
+        return []
+
+
+def _extract_feature_onnx(image_path: str) -> list:
+    """Extract feature vector from an image using ONNX Runtime.
+
+    Returns feature vector or empty list on error.
+    """
+    session = _get_onnx_session()
+    if session is None:
+        return []
+
+    try:
+        import numpy as _np
+
+        img = PILImage.open(image_path).convert("RGB")
+        img = img.resize((224, 224), PILImage.LANCZOS)
+
+        # Convert to NCHW format with ImageNet normalization
+        arr = _np.array(img, dtype=_np.float32) / 255.0
+        arr = (arr - _np.array([0.485, 0.456, 0.406])) / _np.array([0.229, 0.224, 0.225])
+        arr = arr.transpose(2, 0, 1)  # HWC -> CHW
+        arr = arr[np.newaxis, ...]  # Add batch dimension
+
+        input_name = session.get_inputs()[0].name
+        output = session.run(None, {input_name: arr.astype(_np.float32)})
+
+        vec = output[0].flatten().tolist()
+        mag = math.sqrt(sum(v * v for v in vec))
+        if mag > 0:
+            vec = [v / mag for v in vec]
+        return vec
+
+    except Exception:
+        return []
+
+
+def _extract_feature(image_path: str) -> list:
+    """Extract CNN feature vector, trying PyTorch first, then ONNX.
+
+    Returns normalized feature vector or empty list on error.
+    """
+    if TORCH_AVAILABLE:
+        return _extract_feature_pytorch(image_path)
+    elif ONNX_AVAILABLE:
+        return _extract_feature_onnx(image_path)
+    return []
+
+
+def detect_cnn_similar_db(index_path: str, threshold: float = 0.90,
+                          batch_size: int = 32) -> list:
+    """Detect similar photos using CNN deep learning feature extraction.
+
+    Uses MobileNet-V3 (PyTorch) or ONNX Runtime for feature extraction,
+    with cosine similarity for matching. Falls back gracefully if neither
+    is available.
+
+    Args:
+        index_path: Path to SQLite metadata index
+        threshold: Cosine similarity threshold (0.0-1.0, default 0.90)
+        batch_size: Number of images to process per batch (default: 32)
+    """
+    # Check available backends
+    backend = None
+    if TORCH_AVAILABLE:
+        backend = "pytorch"
+    elif ONNX_AVAILABLE:
+        backend = "onnx"
+    else:
+        print("  ⚠️  Neither PyTorch nor ONNX Runtime installed — CNN detection skipped", file=sys.stderr)
+        print("     Install with: pip install torch torchvision  OR  pip install onnxruntime", file=sys.stderr)
+        return []
+
+    if not PIL_AVAILABLE:
+        print("  ⚠️  Pillow not installed — CNN detection skipped", file=sys.stderr)
+        return []
+
+    print(f"  CNN dedup backend: {backend}")
+
+    conn = sqlite3.connect(index_path)
+    conn.row_factory = sqlite3.Row
+
+    # Check available columns for cross-compatibility
+    available_cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+
+    select_fields = ["file_path"]
+    if "extension" in available_cols:
+        select_fields.append("extension")
+    if "media_type" in available_cols:
+        select_fields.append("media_type")
+
+    query = f"SELECT {', '.join(select_fields)} FROM photos"
+    conditions = []
+    if "media_type" in available_cols:
+        conditions.append("media_type = 'image'")
+    if "extension" in available_cols:
+        conditions.append("extension IN ('jpg', 'jpeg', 'png', 'heic', 'heif', 'bmp', 'tif', 'tiff', 'webp')")
+    if conditions:
+        query += " WHERE " + " AND ".join(conditions)
+
+    cursor = conn.execute(query)
+
+    entries = []
+    for row in cursor:
+        row_dict = dict(row)
+        entries.append({
+            "path": row_dict["file_path"],
+            "extension": row_dict.get("extension", ""),
+        })
+    conn.close()
+
+    if len(entries) < 2:
+        return []
+
+    print(f"  Extracting CNN features for {len(entries)} images...")
+
+    # Extract features with progress
+    features = []  # [(path, feature_vector)]
+    last_pct = -1
+
+    for idx, entry in enumerate(entries):
+        pct = idx * 100 // len(entries)
+        if pct >= last_pct + 10 or idx == 0:
+            print(f"  Extracting... {idx}/{len(entries)} ({pct}%)")
+            last_pct = pct
+
+        vec = _extract_feature(entry["path"])
+        if vec:
+            features.append((entry["path"], vec))
+
+    print(f"  Extracted features: {len(features)}/{len(entries)} images")
+
+    if len(features) < 2:
+        return []
+
+    # Union-Find for proper group merging
+    parent = {}
+
+    def find(x):
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])  # path compression
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    # Build similarity pairs using union-find
+    for i in range(len(features)):
+        path1, vec1 = features[i]
+        parent.setdefault(path1, path1)
+
+        for j in range(i + 1, len(features)):
+            path2, vec2 = features[j]
+            parent.setdefault(path2, path2)
+
+            # Cosine similarity (vectors already normalized)
+            dot = sum(a * b for a, b in zip(vec1, vec2))
+            if dot >= threshold:
+                union(path1, path2)
+
+    # Collect groups from union-find roots
+    root_groups = defaultdict(set)
+    for path in parent:
+        root_groups[find(path)].add(path)
+
+    # Only keep groups with 2+ members
+    result = []
+    group_id = 0
+    for root, members in sorted(root_groups.items()):
+        if len(members) < 2:
+            continue
+        group_id += 1
+        for path in sorted(members):
+            result.append({
+                "group_id": group_id,
+                "phash": "",
+                "file_path": path,
+                "match_type": "cnn_mobilenet",
+            })
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Combined mode: run all detection methods
 # ---------------------------------------------------------------------------
 
-def detect_all_db(index_path: str, phash_threshold: int = 0) -> list:
+def detect_all_db(index_path: str, phash_threshold: int = 0,
+                  cnn_threshold: float = 0.90, apple_ql_threshold: float = 0.92) -> list:
     """Run all duplicate detection methods and merge results."""
     all_results = []
 
@@ -551,6 +944,15 @@ def detect_all_db(index_path: str, phash_threshold: int = 0) -> list:
     # Burst detection
     burst_results = detect_bursts_db(index_path)
     all_results.extend(burst_results)
+
+    # Apple quality vector similarity
+    apple_ql_results = detect_apple_quality_similar_db(index_path, threshold=apple_ql_threshold)
+    all_results.extend(apple_ql_results)
+
+    # CNN deep learning similarity
+    if TORCH_AVAILABLE or ONNX_AVAILABLE:
+        cnn_results = detect_cnn_similar_db(index_path, threshold=cnn_threshold)
+        all_results.extend(cnn_results)
 
     # Re-number group IDs to be unique across all methods
     if not all_results:
@@ -591,6 +993,13 @@ def detect_apple_quality_similar_db(index_path: str, threshold: float = 0.92) ->
     import json as _json
 
     conn = sqlite3.connect(index_path)
+
+    # Check if the required column exists
+    available_cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+    if "photos_quality_vector" not in available_cols:
+        conn.close()
+        return []
+
     cursor = conn.execute("""
         SELECT file_path, photos_quality_vector
         FROM photos
@@ -708,6 +1117,7 @@ def write_human(entries, output_path, index_path: str = ""):
         "cross_format": "cross-format",
         "burst_subsec": "burst",
         "apple_quality_vector": "Apple QL similar",
+        "cnn_mobilenet": "CNN (MobileNet) similar",
     }
 
     lines = []
@@ -779,10 +1189,14 @@ def main() -> None:
                         help="Detect burst photos using SubSecTime EXIF data")
     parser.add_argument("--detect-apple-ql", action="store_true",
                         help="Detect similar photos using Apple's pre-computed ML quality vectors (zero-dependency)")
+    parser.add_argument("--detect-cnn", action="store_true",
+                        help="Detect similar photos using CNN deep learning (MobileNet-V3, requires PyTorch or ONNX Runtime)")
     parser.add_argument("--detect-all", action="store_true",
-                        help="Run all detection methods (pHash + scaled + cross-format + bursts + Apple QL)")
+                        help="Run all detection methods (pHash + scaled + cross-format + bursts + Apple QL + CNN)")
     parser.add_argument("--apple-ql-threshold", type=float, default=0.92,
                         help="Cosine similarity threshold for Apple quality vector detection (default: 0.92)")
+    parser.add_argument("--cnn-threshold", type=float, default=0.90,
+                        help="Cosine similarity threshold for CNN detection (default: 0.90)")
     parser.add_argument("--scaled-threshold", type=int, default=SCALED_PHASH_THRESHOLD,
                         help=f"Hamming distance threshold for scaled duplicate verification (default: {SCALED_PHASH_THRESHOLD})")
     parser.add_argument("--cross-format-threshold", type=int, default=CROSS_FORMAT_PHASH_THRESHOLD,
@@ -802,11 +1216,12 @@ def main() -> None:
 
     # Determine which detection methods to run
     run_all = args.detect_all
-    run_phash = not (args.detect_scaled or args.detect_cross_format or args.detect_bursts or args.detect_apple_ql) or run_all
+    run_phash = not (args.detect_scaled or args.detect_cross_format or args.detect_bursts or args.detect_apple_ql or args.detect_cnn) or run_all
     run_scaled = args.detect_scaled or run_all
     run_cross = args.detect_cross_format or run_all
     run_bursts = args.detect_bursts or run_all
     run_apple_ql = args.detect_apple_ql or run_all
+    run_cnn = args.detect_cnn or run_all
 
     all_results = []
     method_stats = {}
@@ -845,6 +1260,12 @@ def main() -> None:
         all_results.extend(apple_ql_results)
         n = len(set(e["group_id"] for e in apple_ql_results)) if apple_ql_results else 0
         method_stats["Apple QL"] = (len(apple_ql_results), n)
+
+    if run_cnn:
+        cnn_results = detect_cnn_similar_db(index_path, threshold=args.cnn_threshold)
+        all_results.extend(cnn_results)
+        n = len(set(e["group_id"] for e in cnn_results)) if cnn_results else 0
+        method_stats["CNN"] = (len(cnn_results), n)
 
     # Re-number group IDs
     if all_results:

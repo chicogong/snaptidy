@@ -180,7 +180,7 @@ def run_detect(prefs: dict, index_db: str, output_csv: str) -> bool:
     all_results = []
 
     # Exact duplicates (always run)
-    exact_results = find_duplicates_db(index_db)
+    exact_results, _ = find_duplicates_db(index_db)
     if exact_results:
         # Normalize exact results to match similar results format
         for r in exact_results:

@@ -170,11 +170,14 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
 
     # Human-readable labels for match types
     MATCH_TYPE_LABELS = {
+        "exact_sha256": "identical SHA-256",
         "exact_phash": "identical pHash",
         "fuzzy_phash": "similar pHash",
         "scaled": "scaled duplicate",
         "cross_format": "cross-format duplicate",
         "burst_subsec": "burst photo",
+        "apple_quality_vector": "Apple QL similar",
+        "cnn_mobilenet": "CNN (MobileNet) similar",
     }
 
     for group_id, paths in groups.items():

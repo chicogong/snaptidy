@@ -40,21 +40,21 @@ from datetime import datetime
 
 try:
     from PIL import Image
+    PILLOW_AVAILABLE = True
 except ImportError:
-    print("Pillow is required. Install with: pip install Pillow", file=sys.stderr)
-    sys.exit(1)
+    PILLOW_AVAILABLE = False
 
 try:
     import piexif
+    PIEXIF_AVAILABLE = True
 except ImportError:
-    print("piexif is required. Install with: pip install piexif", file=sys.stderr)
-    sys.exit(1)
+    PIEXIF_AVAILABLE = False
 
 try:
     import imagehash
+    IMAGEHASH_AVAILABLE = True
 except ImportError:
-    print("imagehash is required. Install with: pip install imagehash", file=sys.stderr)
-    sys.exit(1)
+    IMAGEHASH_AVAILABLE = False
 
 # Optional HEIC/HEIF support via pillow-heif
 try:
@@ -155,6 +155,8 @@ def compute_sha256(path: str) -> str:
 
 def get_exif_datetime(path: str) -> str:
     """Extract DateTimeOriginal from EXIF data if present.  Returns ISO string or ''."""
+    if not PIEXIF_AVAILABLE:
+        return ""
     try:
         exif_dict = piexif.load(path)
         dt = exif_dict.get("Exif", {}).get(piexif.ExifIFD.DateTimeOriginal)
@@ -178,6 +180,8 @@ def get_exif_datetime(path: str) -> str:
 
 def get_gps_coords(path: str) -> tuple:
     """Extract GPS latitude/longitude from EXIF.  Returns (lat, lon) or ('', '')."""
+    if not PIEXIF_AVAILABLE:
+        return "", ""
     try:
         exif_dict = piexif.load(path)
         gps_ifd = exif_dict.get("GPS", {})
@@ -218,6 +222,8 @@ def get_gps_coords(path: str) -> tuple:
 
 def get_camera_info(path: str) -> tuple:
     """Extract camera make/model from EXIF.  Returns (make, model) or ('', '')."""
+    if not PIEXIF_AVAILABLE:
+        return "", ""
     try:
         exif_dict = piexif.load(path)
         zeroth = exif_dict.get("0th", {})
@@ -234,6 +240,8 @@ def get_camera_info(path: str) -> tuple:
 
 def has_exif_data(path: str) -> bool:
     """Check if the file has meaningful EXIF data (beyond just file stats)."""
+    if not PIEXIF_AVAILABLE:
+        return False
     try:
         exif_dict = piexif.load(path)
         # Check for any of: exposure, GPS, actual camera info
@@ -248,6 +256,8 @@ def has_exif_data(path: str) -> bool:
 
 def compute_phash(path: str) -> str:
     """Compute perceptual hash for an image.  Returns hex string or '' on error."""
+    if not PILLOW_AVAILABLE or not IMAGEHASH_AVAILABLE:
+        return ""
     try:
         with Image.open(path) as img:
             ph = imagehash.average_hash(img.convert("RGB"))
@@ -258,6 +268,8 @@ def compute_phash(path: str) -> str:
 
 def get_image_size(path: str) -> tuple:
     """Return (width, height) of an image or ('', '') on failure."""
+    if not PILLOW_AVAILABLE:
+        return "", ""
     try:
         with Image.open(path) as img:
             return img.width, img.height
@@ -314,6 +326,8 @@ def get_folder_tag(full_path: str, scan_root: str) -> str:
 
 def get_subsec_time(path: str) -> str:
     """Extract SubSecTimeOriginal from EXIF.  Returns string or ''."""
+    if not PIEXIF_AVAILABLE:
+        return ""
     try:
         exif_dict = piexif.load(path)
         subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTimeOriginal)
@@ -613,6 +627,22 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
 
 
 def main() -> None:
+    # Check optional dependencies and warn
+    missing = []
+    if not PILLOW_AVAILABLE:
+        missing.append("Pillow (pip install Pillow)")
+    if not PIEXIF_AVAILABLE:
+        missing.append("piexif (pip install piexif)")
+    if not IMAGEHASH_AVAILABLE:
+        missing.append("imagehash (pip install imagehash)")
+    if missing:
+        print("⚠️  Optional dependencies not installed — some features will be unavailable:", file=sys.stderr)
+        for m in missing:
+            print(f"     - {m}", file=sys.stderr)
+        print("     phash, EXIF, dimensions, and image size will be empty.", file=sys.stderr)
+        print("     Install with: pip install Pillow piexif imagehash", file=sys.stderr)
+        print(file=sys.stderr)
+
     parser = argparse.ArgumentParser(
         description="Scan photos/videos and build metadata index (SQLite or CSV)")
     parser.add_argument("--input", required=True, help="Directory to scan")

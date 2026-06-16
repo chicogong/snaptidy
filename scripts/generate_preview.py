@@ -63,11 +63,14 @@ def format_size(n: int) -> str:
 
 
 MATCH_TYPE_LABELS = {
+    "exact_sha256": "Identical SHA-256",
     "exact_phash": "Identical pHash",
     "fuzzy_phash": "Similar pHash",
     "scaled": "Scaled duplicate",
     "cross_format": "Cross-format",
     "burst_subsec": "Burst photo",
+    "apple_quality_vector": "Apple QL similar",
+    "cnn_mobilenet": "CNN (MobileNet) similar",
 }
 
 
