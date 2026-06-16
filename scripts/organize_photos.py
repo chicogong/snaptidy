@@ -55,9 +55,9 @@ DEDUP_METHODS = {
 
 STRATEGIES = {
     "quality": "Keep highest quality (resolution + file size + EXIF)",
-    "oldest": "Keep oldest file (likely original)",
+    "oldest": "Keep oldest file (likely the original)",
     "newest": "Keep newest file (latest edit)",
-    "folder": "Keep files from preferred folder",
+    "folder": "Keep files from preferred folder/album",
 }
 
 TRASH_MODES = {
@@ -131,6 +131,15 @@ def collect_preferences_interactive():
     print("  Leave empty for no preference")
     pref_folder = input("  Preferred folder: ").strip()
     prefs["prefer_folders"] = [f.strip() for f in pref_folder.split(",") if f.strip()] if pref_folder else []
+
+    # 5.5. Album preferences (for Photos Library sources)
+    prefs["prefer_albums"] = []
+    if prefs["source_type"] == "photos_library":
+        print()
+        print("📁 Prefer to keep photos from which album? (e.g., \"My Favorites\", \"旅行\")")
+        print("  Leave empty for no preference")
+        pref_album = input("  Preferred album: ").strip()
+        prefs["prefer_albums"] = [a.strip() for a in pref_album.split(",") if a.strip()] if pref_album else []
 
     # 6. Trash mode
     print()
@@ -653,6 +662,106 @@ def detect_external_drives() -> list:
 
 
 # ---------------------------------------------------------------------------
+# Album helpers
+# ---------------------------------------------------------------------------
+
+def _list_albums(index_db: str) -> None:
+    """List available albums and their photo counts from the scan index."""
+    print()
+    print("📋 Available Albums:")
+    print("─" * 50)
+    try:
+        conn = sqlite3.connect(index_db)
+        # Check if photos_albums column exists
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+        if "photos_albums" not in cols:
+            print("  ⚠️  No album data in this scan. Use --source-type photos_library to scan albums.")
+            conn.close()
+            return
+
+        # Parse album membership (comma-separated in photos_albums)
+        album_counts = {}
+        cursor = conn.execute("SELECT photos_albums FROM photos WHERE photos_albums != ''")
+        for (albums_str,) in cursor:
+            for album in albums_str.split(","):
+                album = album.strip()
+                if album:
+                    album_counts[album] = album_counts.get(album, 0) + 1
+
+        conn.close()
+
+        if not album_counts:
+            print("  No albums found.")
+            return
+
+        for album, count in sorted(album_counts.items(), key=lambda x: -x[1]):
+            print(f"  📁 {album}: {count} photos")
+        print()
+        print("  Use --album-filter to process only specific albums")
+        print("  Use --exclude-album to skip specific albums")
+        print("  Use --prefer-album to prefer keeping photos from specific albums")
+    except Exception as e:
+        print(f"  Error reading albums: {e}")
+
+
+def _apply_album_filter(index_db: str, album_filter: list, exclude_album: list) -> None:
+    """Filter photos in the index DB by album membership.
+
+    Removes photos that don't match --album-filter or that match --exclude-album.
+    """
+    conn = sqlite3.connect(index_db)
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+
+    if "photos_albums" not in cols:
+        print("  ⚠️  No album data — --album-filter and --exclude-album require Photos Library scan.")
+        conn.close()
+        return
+
+    total_before = conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+    remove_paths = set()
+
+    cursor = conn.execute("SELECT file_path, photos_albums FROM photos WHERE photos_albums != ''")
+    for path, albums_str in cursor:
+        albums = [a.strip() for a in albums_str.split(",") if a.strip()]
+
+        # --album-filter: keep only photos in at least one specified album
+        if album_filter:
+            if not any(a in album_filter for a in albums):
+                remove_paths.add(path)
+
+        # --exclude-album: remove photos in any specified album
+        if exclude_album:
+            if any(a in exclude_album for a in albums):
+                remove_paths.add(path)
+
+    # Also remove photos with no album if album_filter is specified
+    if album_filter:
+        no_album = conn.execute(
+            "SELECT file_path FROM photos WHERE photos_albums = '' OR photos_albums IS NULL"
+        ).fetchall()
+        for (path,) in no_album:
+            remove_paths.add(path)
+
+    if remove_paths:
+        conn.executemany("DELETE FROM photos WHERE file_path = ?",
+                         [(p,) for p in remove_paths])
+        conn.commit()
+
+    total_after = conn.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+    conn.close()
+
+    removed = total_before - total_after
+    if removed > 0:
+        print(f"  📋 Album filter: removed {removed} photos, {total_after} remaining")
+        if album_filter:
+            print(f"     Included albums: {', '.join(album_filter)}")
+        if exclude_album:
+            print(f"     Excluded albums: {', '.join(exclude_album)}")
+    else:
+        print(f"  📋 Album filter: no photos filtered out ({total_after} remaining)")
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
@@ -685,6 +794,16 @@ def main() -> None:
                         help="Check iCloud download status before scanning")
     parser.add_argument("--detect-sources", action="store_true",
                         help="Detect external drives and Android devices")
+    parser.add_argument("--album-filter", action="append", default=[],
+                        help="Only process photos in specified album(s). "
+                             "Can be used multiple times. Use --list-albums to see available albums.")
+    parser.add_argument("--exclude-album", action="append", default=[],
+                        help="Skip photos in specified album(s). Can be used multiple times.")
+    parser.add_argument("--list-albums", action="store_true",
+                        help="List available albums in the source and exit.")
+    parser.add_argument("--prefer-album", action="append", default=[],
+                        help="Prefer keeping photos from specified album(s) when choosing which duplicate to keep. "
+                             "Used with --strategy folder.")
     args = parser.parse_args()
 
     # Auto-detect source type
@@ -769,6 +888,25 @@ def main() -> None:
             conn.close()
         except sqlite3.OperationalError:
             pass  # photos_cloud_state column may not exist in file-system scans
+
+    # List albums and exit (only for Photos Library sources)
+    if args.list_albums:
+        _list_albums(index_db)
+        return
+
+    # Album filtering
+    album_filter = args.album_filter if hasattr(args, 'album_filter') else []
+    exclude_album = args.exclude_album if hasattr(args, 'exclude_album') else []
+    prefer_album = args.prefer_album if hasattr(args, 'prefer_album') else []
+
+    if album_filter or exclude_album:
+        _apply_album_filter(index_db, album_filter, exclude_album)
+
+    # Pass prefer_album into prefs for strategy use
+    if prefer_album:
+        existing = prefs.get("prefer_folders", [])
+        # Map album names to folder_tag values so they work with --strategy folder
+        prefs["prefer_albums"] = prefer_album
 
     # Step 2-5: Route by organize mode
     mode = prefs.get("mode", "dedup")

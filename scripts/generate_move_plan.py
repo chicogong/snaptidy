@@ -138,6 +138,14 @@ def score_file(meta: dict, strategy: str, prefer_folders: list = None) -> float:
     if prefer_folders and folder_tag in prefer_folders:
         score += 50
 
+    # Explicit preferred album bonus (+50)
+    prefer_albums = (meta.get("_prefer_albums") or []) if isinstance(meta, dict) else []
+    albums_str = meta.get("photos_albums") or ""
+    if prefer_albums and albums_str:
+        photo_albums = [a.strip() for a in albums_str.split(",") if a.strip()]
+        if any(a in prefer_albums for a in photo_albums):
+            score += 50
+
     # Strategy overrides
     if strategy == "oldest":
         # Earliest date gets bonus
@@ -370,6 +378,8 @@ def main() -> None:
                         help="Priority strategy: quality (default), oldest, newest, folder")
     parser.add_argument("--prefer-folder", action="append", default=[],
                         help="Folder tags to prefer keeping (can specify multiple times)")
+    parser.add_argument("--prefer-album", action="append", default=[],
+                        help="Album names to prefer keeping (for Photos Library scans, can specify multiple)")
     parser.add_argument("--trash", action="store_true",
                         help="Move duplicates to macOS Trash instead of review folder")
     parser.add_argument("--format", choices=["csv", "human"], default="csv",
@@ -387,6 +397,11 @@ def main() -> None:
             metadata = load_metadata_db(index_path)
         else:
             metadata = load_metadata_csv(index_path)
+
+    # Inject prefer_albums into metadata so score_file can use it
+    if args.prefer_album and metadata:
+        for path, meta in metadata.items():
+            meta["_prefer_albums"] = args.prefer_album
 
     plan = generate_plan(dups, match_types, metadata, target_root,
                          strategy=args.strategy,
