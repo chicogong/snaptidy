@@ -50,13 +50,5 @@ undo_records/
 # Review folders (moved duplicates)
 review/
 
-# Test data generated artifacts (keep scripts, ignore outputs)
-test_data/*.db
-test_data/*.csv
-test_data/*.html
-test_data/*.json
-test_data/*.txt
-test_data/*.applescript
-test_data/undo_records/
-test_data/review/
-test_data/venv/
+# Test data (large test photos, generated artifacts)
+test_data/
