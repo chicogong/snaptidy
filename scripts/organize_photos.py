@@ -973,6 +973,24 @@ def main() -> None:
     generate_manifest(prefs, plan_csv, stats, manifest_path)
     print(f"  Manifest saved to: {manifest_path}")
 
+    # Generate HTML thumbnail preview
+    preview_path = os.path.join(output_dir, "preview.html")
+    try:
+        from generate_preview import generate_preview_html
+        html_content = generate_preview_html(
+            duplicates_csv=duplicates_csv,
+            index_db=index_db,
+            move_plan_csv=plan_csv,
+        )
+        with open(preview_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        print(f"  🖼️  Thumbnail preview: {preview_path}")
+        # Open preview in browser
+        import subprocess
+        subprocess.Popen(["open", preview_path])
+    except Exception as e:
+        print(f"  ⚠️  Could not generate thumbnail preview: {e}")
+
     if args.dry_run:
         print()
         print("🏁 Dry run complete — no files were moved.")

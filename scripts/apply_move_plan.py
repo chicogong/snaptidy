@@ -51,19 +51,29 @@ def move_photos_to_trash(file_paths: list) -> tuple:
     """Move Photos.app managed files to Trash via PyObjC.
 
     Uses Photos.app's scripting bridge to properly remove photos,
-    keeping the library database consistent.
+    keeping the library database consistent.  Photos are moved to
+    Photos.app's "Recently Deleted" album (recoverable for 30 days).
+
+    If PyObjC/ScriptingBridge fails (permission issues), falls back to
+    generating a .applescript file for the user to run manually.
 
     Returns (success_count, error_count, messages, deleted_filenames).
     """
     if not PYOBJC_AVAILABLE:
-        return 0, len(file_paths), ["PyObjC not installed — install with: pip install pyobjc-framework-Photos"], set()
+        return _fallback_applescript(file_paths)
 
     try:
         from ScriptingBridge import SBApplication
         photos_app = SBApplication.applicationWithBundleIdentifier_("com.apple.Photos")
 
         if photos_app is None:
-            return 0, len(file_paths), ["Cannot connect to Photos.app — is it running?"], set()
+            return _fallback_applescript(file_paths)
+
+        # Activate Photos.app
+        try:
+            photos_app.activate()
+        except Exception:
+            pass
 
         success = 0
         errors = 0
@@ -78,20 +88,34 @@ def move_photos_to_trash(file_paths: list) -> tuple:
         # Get the media items
         media_items = photos_app.mediaItems()
         if media_items is None:
-            return 0, len(file_paths), ["Cannot access Photos.app media items"], set()
+            return _fallback_applescript(file_paths)
+
+        # Check if we actually got items (permission may return empty)
+        try:
+            item_count = media_items.count()
+            if item_count is None or item_count == 0:
+                # Try array() as alternative
+                arr = media_items.array()
+                if arr is None or len(arr) == 0:
+                    return _fallback_applescript(file_paths)
+        except Exception:
+            return _fallback_applescript(file_paths)
 
         # Find and delete matching items
         items_to_delete = []
-        for item in media_items():
-            try:
-                item_path = item.path()
-                if item_path and os.path.basename(item_path) in target_filenames:
-                    items_to_delete.append(item)
-            except Exception:
-                continue
+        try:
+            for item in media_items():
+                try:
+                    item_path = item.path()
+                    if item_path and os.path.basename(item_path) in target_filenames:
+                        items_to_delete.append(item)
+                except Exception:
+                    continue
+        except Exception:
+            return _fallback_applescript(file_paths)
 
         if not items_to_delete:
-            return 0, 0, ["No matching items found in Photos.app"], set()
+            return _fallback_applescript(file_paths)
 
         # Delete items (moves to Recently Deleted in Photos.app)
         for item in items_to_delete:
@@ -113,7 +137,68 @@ def move_photos_to_trash(file_paths: list) -> tuple:
         return success, errors, messages, deleted_filenames
 
     except Exception as e:
-        return 0, len(file_paths), [f"PyObjC error: {e}"], set()
+        return _fallback_applescript(file_paths)
+
+
+def _fallback_applescript(file_paths: list) -> tuple:
+    """Generate a .applescript file for the user to run manually.
+
+    This is used when ScriptingBridge fails (permission issues on macOS).
+    The generated AppleScript will delete the specified photos from
+    Photos.app, moving them to "Recently Deleted" (recoverable for 30 days).
+
+    Returns (0, len(file_paths), [messages], set()) — no items actually deleted,
+    but the script file is generated for manual execution.
+    """
+    if not file_paths:
+        return 0, 0, ["No files to process"], set()
+
+    # Build target path set
+    target_paths = set(file_paths)
+
+    # Generate AppleScript
+    script = 'set targetPaths to {}\n'
+    for path in target_paths:
+        script += f'set end of targetPaths to "{path}"\n'
+
+    script += '''
+tell application "Photos"
+    set deletedCount to 0
+    set albumPhotos to media items
+    repeat with aPhoto in albumPhotos
+        try
+            set photoPath to path of aPhoto
+            if photoPath is not missing value then
+                if targetPaths contains photoPath then
+                    delete aPhoto
+                    set deletedCount to deletedCount + 1
+                end if
+            end if
+        end try
+    end repeat
+    return deletedCount
+end tell
+'''
+    # Write to file
+    script_dir = os.path.dirname(file_paths[0]) if file_paths else "."
+    # Put script next to the plan file
+    plan_dir = os.path.dirname(os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..")))
+    # Use current working directory
+    import tempfile
+    script_path = os.path.join(tempfile.gettempdir(),
+                               "snaptidy_photos_trash.applescript")
+    with open(script_path, "w", encoding="utf-8") as f:
+        f.write(script)
+
+    msg = (
+        f"⚠️  ScriptingBridge cannot access Photos.app (permission issue).\n"
+        f"   Generated AppleScript: {script_path}\n"
+        f"   Run in Terminal: osascript {script_path}\n"
+        f"   This will move {len(file_paths)} photos to Photos.app's "
+        f'"Recently Deleted" (recoverable for 30 days).'
+    )
+    return 0, len(file_paths), [msg], set()
 
 
 def apply_plan(plan_path: str, log_path: str, mode: str = "move"):
