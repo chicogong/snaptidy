@@ -1,6 +1,6 @@
 ---
 name: snaptidy
-version: 3.4.0
+version: 3.4.1
 description: |
   AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
   Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup"
@@ -93,6 +93,14 @@ python3 scripts/generate_move_plan.py --duplicates dup.csv --index index.db \
 2. **Find duplicates** — `find_exact_duplicates.py` (SHA-256) or `find_similar_photos.py --detect-all` (8 modes)
 3. **Preview** — `generate_preview.py` → HTML thumbnails with KEEP/MOVE badges
 4. **Generate plan** — `generate_move_plan.py --strategy quality|oldest|newest|folder`
-5. **Review & apply** — `apply_move_plan.py --mode move|trash` (undo via `--undo`)
+5. **Review & apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+
+## Photos.app "Recently Deleted" — Safe Cleanup
+
+When using `--mode photos-trash`, deleted photos go to Photos.app's **"最近删除" / "Recently Deleted"** album (30-day recovery).
+
+- **First use**: macOS will show an automation permission dialog — click "允许" / "Allow"
+- **Permission denied?**: Go to 系统设置 > 隐私与安全性 > 自动化, enable Photos for your Terminal
+- **Fallback**: If permission unavailable, a `.applescript` file is generated for manual execution
 
 For detailed detection algorithms, priority rules, import workflow, iCloud integration, performance benchmarks, and troubleshooting, see `references/`.
