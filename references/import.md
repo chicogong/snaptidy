@@ -53,9 +53,29 @@ Reads shared album information from Photos.sqlite:
 
 **Limitation**: Shared albums are **read-only** via all programmatic APIs (AppleScript, ScriptingBridge, PhotoKit, Shortcuts). Apple explicitly blocks adding photos to shared albums programmatically - `PHAssetCollection.canPerform(.addContent)` returns `false` for `.albumCloudShared`. This is an Apple design decision, not a bug.
 
-To add photos to a shared album:
-1. Import to a regular album first
-2. Manually drag photos from the regular album to the shared album in Photos.app
+### Semi-Automated Shared Album Workflow
+
+Use `--share-to-album` to reduce the workflow to **1 manual drag**:
+
+```bash
+# 1. Import to a staging album + auto-prepare for shared album
+python3 scripts/import_to_photos.py --source /Volumes/External/Photos \
+    --album "Vacation 2025" \
+    --share-to-album "Vacation 2025"
+
+# This will:
+# 1. Import photos to the "Vacation 2025" album (automated)
+# 2. Tag photos with keyword "snaptidy-share" (automated)
+# 3. Open Photos.app and select those photos (automated)
+# 4. You just DRAG them to the shared album in the sidebar (1 manual step)
+```
+
+Custom keyword:
+```bash
+--share-to-album "Vacation 2025" --share-keyword "vacation-share"
+```
+
+This reduces the typical 10-step process (find album → select photos → right-click → Share → Shared Albums → pick album → confirm) to just 1 drag operation.
 
 ## iCloud Considerations
 

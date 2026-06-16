@@ -21,6 +21,8 @@ SAFETY:
 
 LIMITATIONS:
   - Cannot import into shared albums (AppleScript/ScriptingBridge limitation)
+  - Semi-automated workflow available: --share-to-album tags photos and opens
+    Photos.app with them selected; user just drags to the shared album
   - Photos.app must be running for import operations
   - iCloud-synced library may have storage constraints
   - RAW files and Live Photos may need special handling
@@ -827,6 +829,59 @@ def _write_report(report_path, source_path, source_files, unique_files,
         json.dump(report, f, indent=2, ensure_ascii=False)
 
 
+def prepare_shared_album_workflow(album_name: str, keyword: str = "snaptidy-share") -> None:
+    """Semi-automated workflow to add photos to a shared album.
+
+    Since Apple blocks programmatic writes to shared albums, this function:
+    1. Tags photos in the staging album with a keyword (AppleScript supports this)
+    2. Opens Photos.app and selects those photos
+    3. Prompts the user to drag them to the shared album (1 manual step)
+
+    This reduces the workflow from ~10 steps to just 1 drag operation.
+    """
+    script = f'''
+    tell application "Photos"
+        activate
+        set targetAlbum to album "{album_name}"
+        set thePhotos to every media item of targetAlbum
+
+        if (count of thePhotos) = 0 then
+            display dialog "No photos found in album \\"{album_name}\\""
+            return
+        end if
+
+        -- Add keyword for easy identification
+        repeat with aPhoto in thePhotos
+            set keywords of aPhoto to (keywords of aPhoto) & "{keyword}"
+        end repeat
+
+        -- Select all photos in the album
+        set selection to thePhotos
+
+        display dialog "✅ {len(thePhotos)} photos selected and tagged.\n\n" & ¬
+            "Now DRAG the selected photos to your shared album in the sidebar.\n\n" & ¬
+            "Tip: The shared album should be visible in the left sidebar under 'Shared'.\n" & ¬
+            "The keyword '{keyword}' is added for future reference." with title "SnapTidy — Share to Shared Album" buttons {{"Done"}} default button 1
+    end tell
+    '''
+
+    try:
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=60
+        )
+        if result.returncode != 0:
+            print(f"  ⚠️  AppleScript error: {result.stderr.strip()}", file=sys.stderr)
+            print(f"     Make sure Photos.app is running and the album '{album_name}' exists.")
+        else:
+            print(f"  ✅ Photos tagged with '{keyword}' and selected in Photos.app")
+            print(f"     👉 DRAG the selected photos to your shared album in the sidebar")
+    except subprocess.TimeoutExpired:
+        print(f"  ⚠️  AppleScript timed out — is Photos.app responding?", file=sys.stderr)
+    except Exception as e:
+        print(f"  ⚠️  Error: {e}", file=sys.stderr)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Import photos from external sources into macOS Photos.app with dedup")
@@ -854,6 +909,11 @@ def main() -> None:
                         help="Detect mounted external drives and Android devices")
     parser.add_argument("--show-shared-albums", action="store_true",
                         help="List shared albums from Photos.sqlite (read-only)")
+    parser.add_argument("--share-to-album",
+                        help="Semi-automated: after importing to ALBUM, tag & select photos "
+                             "in Photos.app so you can drag them to a shared album (1 manual step)")
+    parser.add_argument("--share-keyword", default="snaptidy-share",
+                        help="Keyword to tag photos with for shared album workflow (default: snaptidy-share)")
     args = parser.parse_args()
 
     # Detect external sources
@@ -928,6 +988,13 @@ def main() -> None:
         report_path=report_path,
         resume=args.resume,
     )
+
+    # Semi-automated shared album workflow
+    if args.share_to_album and not args.dry_run:
+        staging_album = args.share_to_album
+        print()
+        print("📋 Preparing shared album workflow...")
+        prepare_shared_album_workflow(staging_album, keyword=args.share_keyword)
 
 
 if __name__ == "__main__":
