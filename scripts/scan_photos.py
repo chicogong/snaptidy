@@ -45,6 +45,7 @@ from photo_metadata import (
     compute_aspect_ratio,
 )
 from constants import IMAGE_EXTS, VIDEO_EXTS, get_format_family
+from reverse_geocode import reverse_geocode, init_cache as geo_init_cache, flush_cache as geo_flush_cache
 
 # Skip patterns for directories
 SKIP_DIR_SUFFIXES = {
@@ -163,7 +164,7 @@ def get_folder_tag(full_path: str, scan_root: str) -> str:
     return ""
 
 
-def _compute_entry(full_path, name, ext, stat, input_dir, scan_time):
+def _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=True):
     """Compute metadata dict for a single file.
 
     Returns a dict ready for INSERT OR REPLACE into the photos table.
@@ -186,6 +187,10 @@ def _compute_entry(full_path, name, ext, stat, input_dir, scan_time):
     subsec_time = ""
     aspect_ratio = ""
     format_family = get_format_family(ext)
+    place_city = ""
+    place_region = ""
+    place_country = ""
+    place_country_code = ""
 
     if ext in IMAGE_EXTS:
         media_type = "image"
@@ -197,6 +202,13 @@ def _compute_entry(full_path, name, ext, stat, input_dir, scan_time):
         gps_lat, gps_lon = get_gps_coords(full_path)
         camera_make, camera_model = get_camera_info(full_path)
         has_exif_val = 1 if has_exif_data(full_path) else 0
+        # Reverse geocode GPS → place name
+        if geocode and gps_lat and gps_lon:
+            place = reverse_geocode(gps_lat, gps_lon)
+            place_city = place.get("place_city", "")
+            place_region = place.get("place_region", "")
+            place_country = place.get("place_country", "")
+            place_country_code = place.get("place_country_code", "")
     else:
         media_type = "video"
 
@@ -226,6 +238,10 @@ def _compute_entry(full_path, name, ext, stat, input_dir, scan_time):
         "aspect_ratio": aspect_ratio,
         "subsec_time": subsec_time,
         "format_family": format_family,
+        "place_city": place_city,
+        "place_region": place_region,
+        "place_country": place_country,
+        "place_country_code": place_country_code,
     }
 
 
@@ -263,6 +279,10 @@ def init_db(db_path: str) -> sqlite3.Connection:
         ("aspect_ratio", "TEXT DEFAULT ''"),
         ("subsec_time", "TEXT DEFAULT ''"),
         ("format_family", "TEXT DEFAULT ''"),
+        ("place_city", "TEXT DEFAULT ''"),
+        ("place_region", "TEXT DEFAULT ''"),
+        ("place_country", "TEXT DEFAULT ''"),
+        ("place_country_code", "TEXT DEFAULT ''"),
     ]
     for col_name, col_type in new_columns:
         try:
@@ -278,6 +298,8 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_camera_model ON photos(camera_model)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_aspect_ratio ON photos(aspect_ratio)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_format_family ON photos(format_family)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_place_city ON photos(place_city)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_place_country ON photos(place_country)")
     conn.commit()
     return conn
 
@@ -290,7 +312,8 @@ def _insert_entry(conn, entry):
                  list(entry.values()))
 
 
-def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> None:
+def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
+                    geocode: bool = True) -> None:
     """Walk through input_dir and write metadata to SQLite DB or CSV.
 
     For SQLite mode, entries are written and committed one-by-one so that
@@ -298,6 +321,11 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
     the scan safely picks up where it left off (INSERT OR REPLACE).
     """
     input_dir = os.path.abspath(input_dir)
+
+    # Initialize geocode cache if enabled
+    if geocode:
+        cache_dir = os.path.dirname(os.path.abspath(output_path))
+        geo_init_cache(cache_dir)
     scan_time = datetime.now().isoformat()
     categories = {}
     heic_count = 0
@@ -355,7 +383,7 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
             if size_bytes == 0:
                 continue
 
-            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time)
+            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
             _insert_entry(conn, entry)
             conn.commit()  # Commit every entry — zero data loss on crash
 
@@ -403,7 +431,7 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
             if size_bytes == 0:
                 continue
 
-            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time)
+            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
             entries.append(entry)
 
         fieldnames = list(entries[0].keys()) if entries else []
@@ -413,6 +441,10 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True) -> Non
             for row in entries:
                 writer.writerow(row)
         print(f"Index written to CSV: {output_path} ({len(entries)} files)")
+
+    # Flush geocode cache to disk
+    if geocode:
+        geo_flush_cache()
 
 
 def main() -> None:
@@ -440,6 +472,10 @@ def main() -> None:
                         help="Output index path (.db for SQLite, .csv for CSV)")
     parser.add_argument("--format", choices=["auto", "db", "csv"], default="auto",
                         help="Output format (default: auto-detect from file extension)")
+    parser.add_argument("--geocode", action="store_true", default=True,
+                        help="Reverse-geocode GPS coordinates to place names (default: on)")
+    parser.add_argument("--no-geocode", action="store_false", dest="geocode",
+                        help="Skip reverse geocoding (faster scan)")
     args = parser.parse_args()
 
     input_dir = os.path.abspath(args.source)
@@ -460,7 +496,7 @@ def main() -> None:
     else:
         use_db = False
 
-    scan_directory(input_dir, output_path, use_db=use_db)
+    scan_directory(input_dir, output_path, use_db=use_db, geocode=args.geocode)
 
 
 if __name__ == "__main__":

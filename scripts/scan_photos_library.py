@@ -39,6 +39,7 @@ from photo_metadata import (
 from constants import (
     IMAGE_EXTS, VIDEO_EXTS, CORE_DATA_EPOCH, get_format_family, core_data_to_iso,
 )
+from reverse_geocode import reverse_geocode, init_cache as geo_init_cache, flush_cache as geo_flush_cache
 
 # Apple pre-computed ML quality feature keys from ZCOMPUTEDASSETATTRIBUTES
 # These 17 scores are computed by Apple's Vision framework on import,
@@ -127,6 +128,10 @@ def _open_output_db(output_path: str) -> sqlite3.Connection:
         ("photos_shared_albums", "TEXT DEFAULT ''"),
         ("photos_icloud_locally_available", "INTEGER DEFAULT -1"),
         ("photos_quality_vector", "TEXT DEFAULT ''"),
+        ("place_city", "TEXT DEFAULT ''"),
+        ("place_region", "TEXT DEFAULT ''"),
+        ("place_country", "TEXT DEFAULT ''"),
+        ("place_country_code", "TEXT DEFAULT ''"),
     ]
     for col_name, col_type in defined_cols:
         if col_name not in existing_cols:
@@ -137,7 +142,8 @@ def _open_output_db(output_path: str) -> sqlite3.Connection:
     for idx in ["idx_sha256", "idx_phash", "idx_category", "idx_exif_datetime",
                 "idx_folder_tag", "idx_camera_model", "idx_aspect_ratio",
                 "idx_format_family", "idx_photos_favorite", "idx_photos_albums",
-                "idx_photos_shared_albums", "idx_photos_icloud_locally_available"]:
+                "idx_photos_shared_albums", "idx_photos_icloud_locally_available",
+                "idx_place_city", "idx_place_country"]:
         col = idx.replace("idx_", "")
         if col in all_cols:
             conn.execute(f"CREATE INDEX IF NOT EXISTS {idx} ON photos({col})")
@@ -153,9 +159,15 @@ def _insert_entry(conn, entry: dict):
                  list(entry.values()))
 
 
-def scan_photos_library(library_path: str, output_path: str) -> None:
+def scan_photos_library(library_path: str, output_path: str,
+                         geocode: bool = True) -> None:
     """Scan a Photos Library and write metadata to SQLite DB."""
     library_path = os.path.abspath(library_path)
+
+    # Initialize geocode cache if enabled
+    if geocode:
+        cache_dir = os.path.dirname(os.path.abspath(output_path))
+        geo_init_cache(cache_dir)
     db_path = os.path.join(library_path, "database", "Photos.sqlite")
     originals_dir = os.path.join(library_path, "originals")
 
@@ -421,6 +433,18 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             camera_make, camera_model = get_camera_info(file_path)
             has_exif_val = 1 if has_exif_data(file_path) else 0
 
+        # Reverse geocode GPS → place name
+        place_city = ""
+        place_region = ""
+        place_country = ""
+        place_country_code = ""
+        if geocode and gps_lat and gps_lon:
+            place = reverse_geocode(gps_lat, gps_lon)
+            place_city = place.get("place_city", "")
+            place_region = place.get("place_region", "")
+            place_country = place.get("place_country", "")
+            place_country_code = place.get("place_country_code", "")
+
         sha256 = compute_sha256(file_path)
 
         # Convert Core Data date
@@ -461,6 +485,10 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
             "photos_shared_albums": shared_album_str,
             "photos_icloud_locally_available": icloud_locally_available,
             "photos_quality_vector": json.dumps(quality_map.get(pk, [])),
+            "place_city": place_city,
+            "place_region": place_region,
+            "place_country": place_country,
+            "place_country_code": place_country_code,
         }
 
         entries.append(entry_dict)
@@ -513,6 +541,10 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         print(f"  ℹ️  Optional deps not installed: {', '.join(missing)}")
         print(f"      pHash/EXIF/GPS data will be empty (Apple quality vector still available)")
         print(f"      Install with: pip install {' '.join(missing)}")
+
+    # Flush geocode cache to disk
+    if geocode:
+        geo_flush_cache()
     print(f"  Output: {output_path}")
 
 
@@ -523,6 +555,10 @@ def main() -> None:
                         help="Path to .photoslibrary bundle (alias: --library)")
     parser.add_argument("--output", "-o", dest="output", required=True,
                         help="Output index path (.db for SQLite)")
+    parser.add_argument("--geocode", action="store_true", default=True,
+                        help="Reverse-geocode GPS to place names (default: on)")
+    parser.add_argument("--no-geocode", action="store_false", dest="geocode",
+                        help="Skip reverse geocoding (faster scan)")
     args = parser.parse_args()
 
     library_path = os.path.abspath(args.source)
@@ -537,7 +573,7 @@ def main() -> None:
         sys.exit(1)
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    scan_photos_library(library_path, output_path)
+    scan_photos_library(library_path, output_path, geocode=args.geocode)
 
 
 if __name__ == "__main__":

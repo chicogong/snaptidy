@@ -429,6 +429,92 @@ def generate_by_category_plan(index_db: str, plan_csv: str, target_root: str) ->
     return len(plan)
 
 
+def generate_by_location_plan(index_db: str, plan_csv: str, target_root: str) -> int:
+    """Generate a move plan that organizes photos into location-based folders.
+
+    Uses reverse-geocoded place names (place_city, place_region, place_country)
+    when available, otherwise falls back to GPS coordinate zones.
+
+    Folder structure (with place data):
+        target_root/{Country}/{Region}/{City}/filename
+    Folder structure (GPS fallback):
+        target_root/GPS_{lat_bucket}_{lon_bucket}/filename
+
+    Returns number of planned moves.
+    """
+    conn = sqlite3.connect(index_db)
+    conn.row_factory = sqlite3.Row
+
+    plan = []
+    skipped = 0
+
+    cursor = conn.execute("SELECT file_path, place_city, place_region, place_country, "
+                           "gps_latitude, gps_longitude FROM photos")
+    for row in cursor:
+        src = row["file_path"]
+        city = row["place_city"] or ""
+        region = row["place_region"] or ""
+        country = row["place_country"] or ""
+
+        # Determine folder path
+        if city or region or country:
+            # Use place names (from reverse geocoding)
+            parts = []
+            if country:
+                # Sanitize folder name
+                parts.append(country.replace("/", "_").replace("\\", "_"))
+            if region and region != country:
+                parts.append(region.replace("/", "_").replace("\\", "_"))
+            if city:
+                parts.append(city.replace("/", "_").replace("\\", "_"))
+            location_folder = os.path.join(*parts) if parts else "Unknown_Location"
+        else:
+            # Fallback: GPS coordinate zone (1-degree grid ≈ 111km)
+            lat = row["gps_latitude"] or ""
+            lon = row["gps_longitude"] or ""
+            if lat and lon:
+                try:
+                    lat_f = float(lat)
+                    lon_f = float(lon)
+                    lat_bucket = int(lat_f)
+                    lon_bucket = int(lon_f)
+                    lat_dir = "N" if lat_f >= 0 else "S"
+                    lon_dir = "E" if lon_f >= 0 else "W"
+                    location_folder = f"GPS_{lat_dir}{abs(lat_bucket)}_{lon_dir}{abs(lon_bucket)}"
+                except (ValueError, TypeError):
+                    location_folder = "Unknown_Location"
+            else:
+                skipped += 1
+                continue
+
+        filename = os.path.basename(src)
+        target_path = os.path.join(target_root, location_folder, filename)
+
+        # Skip if already in the correct folder
+        src_dir = os.path.dirname(src)
+        expected_dir = os.path.join(target_root, location_folder)
+        if os.path.normpath(src_dir) == os.path.normpath(expected_dir):
+            continue
+
+        plan.append({
+            "action": "move",
+            "source_path": src,
+            "target_path": target_path,
+            "reason": f"organize by location: {city or 'GPS zone'}",
+        })
+
+    conn.close()
+
+    # Write plan
+    with open(plan_csv, "w", newline="", encoding="utf-8-sig") as f:
+        writer = csv.DictWriter(f, fieldnames=["action", "source_path", "target_path", "reason"])
+        writer.writeheader()
+        for entry in plan:
+            writer.writerow(entry)
+
+    return len(plan)
+
+
 # ---------------------------------------------------------------------------
 # Photos.app album organization
 # ---------------------------------------------------------------------------
@@ -1312,20 +1398,42 @@ def main() -> None:
         print(f"  Generated {num_moves} planned moves (by category)")
 
     elif mode == "by-location":
-        # By-location mode: organize by GPS location
+        # By-location mode: organize by GPS place name
         print()
         print("📍 Step 2/5: Organizing by location...")
         conn = sqlite3.connect(index_db)
-        cursor = conn.execute("SELECT COUNT(*) FROM photos WHERE gps_latitude IS NOT NULL AND gps_latitude != ''")
-        has_gps = cursor.fetchone()[0]
+        conn.row_factory = sqlite3.Row
+
+        # Check if we have place data (from reverse geocoding) or just GPS coords
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+        has_place = "place_city" in cols
+
+        # Count photos with location data
+        if has_place:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM photos "
+                "WHERE (place_city IS NOT NULL AND place_city != '') "
+                "OR (gps_latitude IS NOT NULL AND gps_latitude != '')"
+            )
+        else:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM photos "
+                "WHERE gps_latitude IS NOT NULL AND gps_latitude != ''"
+            )
+        has_location = cursor.fetchone()[0]
         conn.close()
-        if has_gps == 0:
-            print("  ⚠️  No GPS data found in photos. Cannot organize by location.")
-            print("     Try 'by-date' or 'by-category' mode instead.")
+
+        if has_location == 0:
+            print("  ⚠️  No location data found in photos. Cannot organize by location.")
+            print("     Re-scan with --geocode to enable reverse geocoding,")
+            print("     or try 'by-date' / 'by-category' mode instead.")
             return
-        print("  GPS-based location organization is not yet fully implemented.")
-        print("  Photos with GPS data will be organized by city/region in a future version.")
-        return
+
+        num_moves = generate_by_location_plan(index_db, plan_csv, prefs["source_path"])
+        print(f"  Generated {num_moves} planned moves (by location)")
+        if not has_place:
+            print("  ℹ️  No place names available — organizing by GPS coordinate zones.")
+            print("     Re-scan with --geocode for city/region-based organization.")
 
     elif mode == "photos-album":
         # Photos.app album organization mode

@@ -82,6 +82,9 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-date --d
 
 # Organize by category (01_Photos, 02_Screenshots, 03_WeChat, etc.)
 python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category --dry-run
+
+# Organize by location (Country/Region/City/)
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-location --dry-run
 ```
 
 ## Key Flags
@@ -105,6 +108,22 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category
 | `--dedup-method` | Detection method: exact/phash/scaled/cross-format/burst/all |
 | `--trash-mode` | Action: move/trash/photos-trash |
 | `--mode dedup\|by-date\|by-category\|by-location` | Organize mode |
+| `--no-geocode` | Disable reverse geocoding during scan |
+| `--geocode` | Enable reverse geocoding (default) |
+
+### EXIF Editing Flags (edit_exif.py)
+
+| Flag | Description |
+|------|-------------|
+| `strip-gps` | Remove GPS data from indexed photos |
+| `set-date` | Set EXIF capture date on specific files |
+| `set-tags` | Write keywords/tags to photo EXIF |
+| `--index PATH` | SQLite index DB for batch strip-gps |
+| `--only-gps` | Only strip GPS from photos that have GPS data |
+| `--date ISO` | Date to set (ISO 8601 format) |
+| `--tags CSV` | Comma-separated tags to write |
+| `--paths FILES` | Specific file paths to modify |
+| `--no-backup` | Skip backup creation (faster, less safe) |
 
 ### Import Flags (import_to_photos.py)
 
@@ -155,3 +174,35 @@ python3 scripts/import_to_photos.py --source /Volumes/External/Photos --resume
 - Shared albums are **READ-ONLY** — cannot add photos via AppleScript
 - Import requires Photos.app to be running
 - iCloud-synced library: only locally-available files are indexed for dedup
+
+## Reverse Geocoding & By-Location Organize
+
+```bash
+# Scan with geocoding (default — populates place_city/region/country columns)
+python3 scripts/scan_photos.py --source ~/Photos --output ./index.db
+
+# Disable geocoding for faster scan
+python3 scripts/scan_photos.py --source ~/Photos --output ./index.db --no-geocode
+
+# Query a single GPS coordinate
+python3 scripts/reverse_geocode.py --lat 39.90 --lon 116.41
+
+# Organize by location (Country/Region/City/filename)
+python3 scripts/organize_photos.py --source ~/Photos --mode by-location --dry-run
+```
+
+## EXIF Editing
+
+```bash
+# Strip GPS data from indexed photos (dry-run first!)
+python3 scripts/edit_exif.py strip-gps --index ./index.db --dry-run
+python3 scripts/edit_exif.py strip-gps --index ./index.db --only-gps
+
+# Set EXIF date on specific files
+python3 scripts/edit_exif.py set-date --date "2025-06-15T14:30:00" --paths photo1.jpg photo2.heic
+
+# Write tags/keywords
+python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths photo1.jpg
+```
+
+Safety: `.bak` backup created before edit, restored on error, cleaned on success.

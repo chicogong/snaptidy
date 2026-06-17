@@ -4,7 +4,7 @@ This file provides universal AI coding rules for the SnapTidy project. Compatibl
 
 ## Project Overview
 
-SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst), generates safe move plans, provides HTML thumbnail previews, and supports undo. It never deletes files. Supports both file-system scanning and Photos.app library scanning. Interactive one-command workflow via `organize_photos.py`. Import from external drives/Android into Photos.app with automatic dedup via `import_to_photos.py`.
+SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst), generates safe move plans, provides HTML thumbnail previews, and supports undo. It never deletes files. Supports both file-system scanning and Photos.app library scanning. Interactive one-command workflow via `organize_photos.py`. Import from external drives/Android into Photos.app with automatic dedup via `import_to_photos.py`. Reverse geocoding (GPS→place names) with persistent cache. EXIF editing (strip GPS, set dates, write tags) with backup/restore safety.
 
 ## Code Conventions
 
@@ -55,6 +55,12 @@ Interactive:
 
 Import:
   import_to_photos.py      — Import from external drive/Android → dedup against library → import
+
+Geocode:
+  reverse_geocode.py        — GPS → place names (CoreLocation/Locationator/Nominatim + persistent cache)
+
+EXIF Edit:
+  edit_exif.py              — Strip GPS / set dates / write tags (backup/restore safety)
 ```
 
 Each step is independent and produces a .db/.csv for the next step. This design allows:
@@ -137,7 +143,7 @@ SQLite `photos` table columns:
 - Time: exif_datetime, file_mtime, subsec_time
 - Image: width, height, phash, aspect_ratio, format_family
 - Classification: media_type, category, has_exif
-- Location: gps_latitude, gps_longitude
+- Location: gps_latitude, gps_longitude, place_city, place_region, place_country, place_country_code
 - Camera: camera_make, camera_model
 - Priority: folder_tag, scan_root, scanned_at
 - Photos.app exclusive: photos_favorite, photos_hidden, photos_screenshot, photos_duplicate_visibility, photos_cloud_state, photos_albums, photos_shared_albums, photos_icloud_locally_available
@@ -147,11 +153,12 @@ Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible)
 ## Dependencies
 
 - Pillow: Image reading and metadata
-- piexif: EXIF data extraction (including SubSecTime)
+- piexif: EXIF data extraction (including SubSecTime) + EXIF editing (strip GPS, set dates, write tags)
 - imagehash: Perceptual hash computation
 - pillow-heif: Optional HEIC/HEIF image support
 - pyobjc-framework-Photos: Optional Photos.app PyObjC deletion
 - photoscript: Optional high-level Photos.app import (recommended for import workflow)
+- exiftool: Optional EXIF editing fallback for HEIC/RAW (via subprocess)
 
 Do NOT add pandas, numpy, or other heavy dependencies unless absolutely necessary.
 
@@ -201,3 +208,38 @@ Source Scan → SHA-256 Hash → Library Index (Photos.sqlite) → Dedup → Imp
 - **--resume** flag enables resuming interrupted imports
 - **import_checkpoint.json** stores state between runs
 - **SIGINT/SIGTERM handler** saves checkpoint on Ctrl+C
+
+## Reverse Geocoding (reverse_geocode.py)
+
+Converts GPS coordinates to human-readable place names. 3 backends with auto-detection:
+
+1. **CoreLocation** (macOS offline) — fastest, no network calls. Uses `CoreLocation` via `pyobjc` or `locationator` CLI.
+2. **Locationator** (macOS HTTP API) — local network, no internet needed.
+3. **Nominatim** (online) — OpenStreetMap API, always available. Rate-limited (1 req/s).
+
+Persistent JSON cache (`geocode_cache.json`) alongside the output DB. Cache key: rounded lat/lon to 3 decimal places (~111m precision). Avoids redundant API calls across runs.
+
+Scan integration: `scan_photos.py` and `scan_photos_library.py` call `reverse_geocode()` automatically when GPS data exists. Populates `place_city`, `place_region`, `place_country`, `place_country_code` columns. Use `--no-geocode` to disable.
+
+## EXIF Editing (edit_exif.py)
+
+Modify photo metadata with safety guarantees:
+
+### Operations
+
+| Operation | Description |
+|-----------|-------------|
+| `strip-gps` | Remove GPS data from indexed photos (with `--only-gps` flag) |
+| `set-date` | Set EXIF capture date on specific files |
+| `set-tags` | Write keywords/tags to photo EXIF |
+
+### Safety Mechanisms
+
+- **Backup/restore**: `.bak` files created before modification, cleaned on success, restored on error
+- **`--dry-run`**: Preview changes without modifying files
+- **`--no-backup`**: Skip backup creation (faster, less safe)
+- **Format support**: piexif for JPEG/TIFF, exiftool fallback for HEIC/RAW
+
+### Batch Operations
+
+`strip-gps --index` reads the scan index DB and strips GPS from all indexed photos. Use `--only-gps` to only process photos that have GPS coordinates.

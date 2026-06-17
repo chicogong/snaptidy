@@ -1,9 +1,9 @@
 ---
 name: snaptidy
-version: 3.7.0
+version: 3.8.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags).
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -26,9 +26,9 @@ metadata:
 
 ## When to Use
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**.
+Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**.
 
-**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats
+**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑
 
 ## Safety Rules — MANDATORY
 
@@ -61,6 +61,9 @@ python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslib
 # Step 5: Organize by category (Screenshots, Photos, etc.)
 python3 scripts/organize_photos.py --source ~/Pictures/Photos\ Library.photoslibrary \
   --mode photos-album --album-organize-by category --dry-run
+
+# Step 6: Organize by location (Country/Region/City/)
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-location --dry-run
 
 # Import from external drive into Photos.app
 python3 scripts/import_to_photos.py --source /Volumes/External/Photos --dry-run
@@ -102,6 +105,43 @@ python3 scripts/generate_move_plan.py --duplicates dup.csv --index index.db \
 3. **Preview** — `generate_preview.py` → HTML thumbnails with KEEP/MOVE badges
 4. **Generate plan** — `generate_move_plan.py --strategy quality|oldest|newest|folder`
 5. **Review & apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+
+## Reverse Geocoding — GPS → Place Names
+
+Automatically converts GPS coordinates to city/region/country during scan. Uses 3 backends with auto-detection:
+
+1. **CoreLocation** (macOS offline, fastest) — no API calls
+2. **Locationator** (macOS HTTP API) — local network
+3. **Nominatim** (online, always available) — OpenStreetMap API
+
+```bash
+# Scan with geocoding (default)
+python3 scripts/scan_photos.py --source ~/Photos --output index.db
+
+# Disable geocoding for faster scan
+python3 scripts/scan_photos.py --source ~/Photos --output index.db --no-geocode
+
+# Query a single coordinate
+python3 scripts/reverse_geocode.py --lat 39.90 --lon 116.41
+```
+
+Persistent JSON cache (`geocode_cache.json`) avoids redundant API calls across runs.
+
+## EXIF Editing — Modify Photo Metadata Safely
+
+```bash
+# Strip GPS data from indexed photos (dry-run first!)
+python3 scripts/edit_exif.py strip-gps --index index.db --dry-run
+python3 scripts/edit_exif.py strip-gps --index index.db
+
+# Set EXIF date
+python3 scripts/edit_exif.py set-date --date "2025-06-15T14:30:00" --paths photo.jpg
+
+# Write tags/keywords
+python3 scripts/edit_exif.py set-tags --tags "vacation,beach" --paths photo.jpg
+```
+
+Safety: `.bak` backup created before edit, restored on error, cleaned on success.
 
 ## Photos.app Album Organization — Create Albums by Date/Category
 

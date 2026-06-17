@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.4-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.8-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
 
 ## 目录
 
 - [为什么选择 SnapTidy？](#为什么选择-snaptidy)
-- [新功能](#v34-新功能)
+- [新功能](#v38-新功能)
 - [核心特性](#核心特性)
 - [安装](#安装)
 - [工作原理](#工作原理)
@@ -37,7 +37,17 @@
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
 
-## v3.7 新功能
+## v3.8 新功能
+
+| 功能 | 说明 |
+|------|------|
+| 📍 **逆地理编码** | GPS → 地名（城市/地区/国家），支持 CoreLocation（离线）、Locationator、Nominatim 三种后端；持久化 JSON 缓存 |
+| ✏️ **EXIF 编辑** | 移除 GPS、设置日期、写入标签 — `edit_exif.py` 带备份/恢复 + `--dry-run` 安全机制 |
+| 🌍 **按地点整理** | `--mode by-location` 将照片整理到 `国家/地区/城市/` 文件夹结构 |
+| 📊 **地点统计** | `library_stats.py` 现在显示按城市统计的照片数量（终端 + HTML 报告） |
+
+<details>
+<summary>v3.7</summary>
 
 | 功能 | 说明 |
 |------|------|
@@ -81,7 +91,10 @@
 - 🔀 **跨格式去重** — 同一照片的 HEIC 和 JPEG 版本
 - 📐 **缩放去重** — 同一照片不同分辨率
 - 📸 **连拍检测** — 通过 SubSecTime 分组连拍照片
-- 📋 **丰富元数据索引** — 提取文件大小、EXIF 日期、GPS、相机信息等写入 SQLite 或 CSV
+- 📋 **丰富元数据索引** — 提取文件大小、EXIF 日期、GPS、相机信息、**地名（城市/地区/国家）**等写入 SQLite 或 CSV
+- 📍 **逆地理编码** — 将 GPS 坐标转换为地名（CoreLocation/Nominatim），持久化缓存
+- ✏️ **EXIF 编辑** — 移除 GPS、设置日期、写入标签，带备份/恢复安全机制
+- 🌍 **按地点整理** — 将照片整理到 `国家/地区/城市/` 文件夹结构
 - 🛡️ **安全优先设计** — 只读扫描、仅移动操作、废纸篓模式、CSV 审计跟踪
 - 💾 **零数据丢失** — 流式 SQLite 写入，逐条提交
 - 💬 **对话驱动** — 通过 AI 助手交互，无需 GUI 或配置文件
@@ -177,8 +190,11 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 或直接运行脚本：
 
 ```bash
-# 第 1 步：扫描（大型图库推荐 SQLite）
+# 第 1 步：扫描（大型图库推荐 SQLite，逆地理编码默认开启）
 python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db
+
+# 第 1b 步：不进行逆地理编码的扫描（更快，无地名数据）
+python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db --no-geocode
 
 # 第 1b 步：快速扫描（零安装，无需任何依赖）
 python3 scripts/quick_scan.py --source /path/to/your/photos --output ./photo_index.db --dedup
@@ -258,8 +274,43 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-date --d
 # 按分类整理（01_Photos, 02_Screenshots, 03_WeChat 等）
 python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category --dry-run
 
+# 按地点整理（国家/地区/城市/文件名）
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-location --dry-run
+
 # 检测已连接的安卓设备和外置硬盘
 python3 scripts/organize_photos.py --source /any --detect-sources
+```
+
+### 逆地理编码
+
+```bash
+# 查询单个 GPS 坐标的地名
+python3 scripts/reverse_geocode.py --lat 39.9042 --lon 116.4074
+
+# 指定后端和语言
+python3 scripts/reverse_geocode.py --lat 37.7749 --lon -122.4194 --backend nominatim --lang en
+
+# 设置自定义缓存目录
+python3 scripts/reverse_geocode.py --lat 31.2304 --lon 121.4737 --cache-dir ./geocache
+```
+
+### EXIF 编辑
+
+```bash
+# 从索引中移除所有照片的 GPS 数据（先干运行！）
+python3 scripts/edit_exif.py strip-gps --index ./photo_index.db --dry-run
+
+# 实际移除 GPS 数据
+python3 scripts/edit_exif.py strip-gps --index ./photo_index.db
+
+# 仅移除有 GPS 数据的照片
+python3 scripts/edit_exif.py strip-gps --index ./photo_index.db --only-gps
+
+# 设置指定文件的 EXIF 日期
+python3 scripts/edit_exif.py set-date --date "2025-06-15T14:30:00" --paths photo1.jpg photo2.heic
+
+# 写入标签/关键词到指定文件
+python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths photo1.jpg photo2.jpg
 ```
 
 ## 智能优先级规则
@@ -316,17 +367,19 @@ python3 scripts/organize_photos.py --source /any --detect-sources
 | 脚本 | 用途 | 输入 | 输出 |
 |------|------|------|------|
 | `quick_scan.py` | 零安装快速扫描（仅标准库，SHA-256 + Apple QL） | 照片目录或 `.photoslibrary` | `.db` |
-| `scan_photos.py` | 遍历目录提取元数据 + GPS + 相机 | 照片视频目录 | `.db` 或 `.csv` |
+| `scan_photos.py` | 遍历目录提取元数据 + GPS + 相机 + **地名** | 照片视频目录 | `.db` 或 `.csv` |
 | `scan_photos_library.py` | 扫描 Photos.app 图库（读取 Photos.sqlite） | `.photoslibrary` 包 | `.db` 或 `.csv` |
 | `find_exact_duplicates.py` | 按 SHA-256 分组精确重复 | `.db` 或 `.csv` 索引 | `duplicates_exact.csv` |
 | `find_similar_photos.py` | 按 pHash、Apple QL、缩放、跨格式、连拍分组相似图像 | `.db` 或 `.csv` 索引 | `duplicates_similar.csv` |
 | `generate_move_plan.py` | 智能评分生成移动计划 | 重复 CSV + 索引 | `move_plan.csv` |
 | `apply_move_plan.py` | 执行移动计划 + 撤销支持 | `move_plan.csv` | `move_log.csv` |
-| `organize_photos.py` | 一键交互式流程 | 来源目录 | 完整流程输出 |
+| `organize_photos.py` | 一键交互式流程（按日期/分类/**按地点**） | 来源目录 | 完整流程输出 |
 | `import_to_photos.py` | 导入 Photos.app 并去重 | 来源目录 | 导入报告 JSON |
 | `generate_preview.py` | HTML 缩略图预览 | 重复 CSV + 索引 | `preview.html` |
 | `generate_album_report.py` | HTML 相册整理报告（前后对比） | `.db` 索引 + 统计 | `album_report.html` |
-| `library_stats.py` | 照片库健康与洞察（只读） | `.db` 索引 | 终端 / JSON / `health.html` |
+| `library_stats.py` | 照片库健康与洞察（只读，**地点分布**） | `.db` 索引 | 终端 / JSON / `health.html` |
+| `reverse_geocode.py` | GPS → 地名（城市/地区/国家） | 经纬度坐标 | 地名文本 |
+| `edit_exif.py` | EXIF 编辑：移除 GPS、设置日期、写入标签 | 索引数据库或文件路径 | 修改后的文件 + 日志 |
 | `photo_metadata.py` · `constants.py` · `applescript_utils.py` | 公共内部模块（哈希/EXIF、常量、AppleScript） | — | — |
 
 ## 依赖
@@ -372,7 +425,7 @@ python3 scripts/organize_photos.py --source /any --detect-sources
 - **按日期重新组织** — 基于 EXIF 日期按年/月文件夹整理
 - **视频去重** — 使用 ffmpeg/opencv 进行关键帧哈希
 - **跨平台支持** — 扩展到 Linux 和 Windows
-- **按地点整理** — GPS 元数据反向地理编码
+- **离线地理编码回退** — 打包轻量级离线逆地理编码数据库
 
 ## 更新日志
 

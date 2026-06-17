@@ -58,6 +58,7 @@ def collect_stats(index_path: str) -> dict:
         "by_category": {},
         "by_format": {},
         "by_year": {},
+        "by_location": {},
         "largest": [],
         "flags": {},
     }
@@ -71,6 +72,7 @@ def collect_stats(index_path: str) -> dict:
     cat_counter = Counter()
     fmt_counter = Counter()
     year_counter = Counter()
+    location_counter = Counter()
     largest = []  # (size, filename, path)
 
     n_screenshot = n_noexif = n_gps = n_icloud_only = n_blur = n_favorite = 0
@@ -121,6 +123,15 @@ def collect_stats(index_path: str) -> dict:
             except Exception:
                 pass
 
+        # Location (reverse-geocoded place names)
+        city = d.get("place_city") or ""
+        region = d.get("place_region") or ""
+        country = d.get("place_country") or ""
+        if city:
+            location_counter[city] += 1
+        elif country:
+            location_counter[f"{country} (unknown city)"] += 1
+
     conn.close()
 
     largest.sort(reverse=True)
@@ -131,6 +142,7 @@ def collect_stats(index_path: str) -> dict:
     stats["by_category"] = dict(cat_counter.most_common())
     stats["by_format"] = dict(fmt_counter.most_common())
     stats["by_year"] = dict(sorted(year_counter.items()))
+    stats["by_location"] = dict(location_counter.most_common(20))
     stats["total_size_human"] = format_size(stats["total_bytes"])
     stats["flags"] = {
         "screenshots": n_screenshot,
@@ -179,6 +191,12 @@ def print_terminal(stats: dict) -> None:
         ymax = max(stats["by_year"].values())
         for year, n in stats["by_year"].items():
             print(f"     {year}  {_bar(n, ymax)} {n:>5}")
+
+    if stats["by_location"]:
+        print("\n  📍 By location (top 15)")
+        loc_total = sum(stats["by_location"].values())
+        for loc, n in list(stats["by_location"].items())[:15]:
+            print(f"     {loc:25s} {_bar(n, loc_total)} {n:>5}")
 
     print("\n  🔍 Health flags")
     f = stats["flags"]
@@ -286,6 +304,7 @@ td{{padding:8px 4px;border-bottom:1px solid #f0f0f2}}
 <div class="card"><h2>🏷️ 类别分布 By category</h2>{bar_rows(stats['by_category'], '#007AFF')}</div>
 <div class="card"><h2>🖼️ 格式分布 By format</h2>{bar_rows(stats['by_format'], '#FF9500')}</div>
 <div class="card"><h2>🗓️ 年度分布 By year</h2>{bar_rows(stats['by_year'], '#34C759')}</div>
+<div class="card"><h2>📍 地点分布 By location</h2>{bar_rows(stats['by_location'], '#AF52DE')}</div>
 <div class="card"><h2>🔍 健康指标 Health flags</h2><div class="flags">{flag_html}</div></div>
 <div class="card"><h2>📈 占用空间最大的文件 Top space consumers</h2><table>{largest_html}</table></div>
 </div></body></html>"""

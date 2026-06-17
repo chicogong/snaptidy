@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.4-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.8-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
 ## Table of Contents
 
 - [Why SnapTidy?](#why-snaptidy)
-- [What's New](#whats-new-in-v34)
+- [What's New](#whats-new-in-v38)
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
@@ -37,7 +37,17 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
 
-## What's New in v3.7
+## What's New in v3.8
+
+| Feature | Description |
+|---------|-------------|
+| 📍 **Reverse Geocoding** | GPS → place names (city/region/country) via CoreLocation (offline), Locationator, or Nominatim; persistent JSON cache |
+| ✏️ **EXIF Editing** | Strip GPS, set dates, write tags — `edit_exif.py` with backup/restore + `--dry-run` safety |
+| 🌍 **By-Location Organize** | `--mode by-location` organizes photos into `Country/Region/City/` folder structure |
+| 📊 **Location Stats** | `library_stats.py` now shows top cities by photo count in terminal & HTML reports |
+
+<details>
+<summary>v3.7</summary>
 
 | Feature | Description |
 |---------|-------------|
@@ -81,8 +91,11 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - 🔀 **Cross-Format Dedup** — HEIC + JPEG of the same photo
 - 📐 **Scaled Dedup** — Same photo at different resolutions
 - 📸 **Burst Detection** — Group burst photos via SubSecTime
-- 📋 **Rich Metadata Index** — Extract file size, EXIF dates, GPS, camera info, dimensions, category, hashes into SQLite or CSV
-- 📊 **Library Health & Insights** — Read-only stats report: category/format/year breakdowns, health flags, top space consumers (terminal / JSON / HTML)
+- 📋 **Rich Metadata Index** — Extract file size, EXIF dates, GPS, camera info, dimensions, category, hashes, **place names (city/region/country)** into SQLite or CSV
+- 📍 **Reverse Geocoding** — Convert GPS coordinates to place names (CoreLocation/Nominatim) with persistent cache
+- ✏️ **EXIF Editing** — Strip GPS, set dates, write tags with backup/restore safety
+- 🌍 **By-Location Organize** — Organize photos into `Country/Region/City/` folder structure
+- 📊 **Library Health & Insights** — Read-only stats report: category/format/year/**location** breakdowns, health flags, top space consumers (terminal / JSON / HTML)
 - 🛡️ **Safety-First Design** — Read-only scanning, move-only operations, Trash mode with Finder recovery, CSV-based audit trail
 - 💾 **Zero Data Loss** — Streaming SQLite writes with per-entry commit
 - 💬 **Conversation-Driven** — Interact through your AI assistant; no GUI or config files needed
@@ -178,8 +191,11 @@ Tell your AI assistant what you want:
 Or run the scripts directly:
 
 ```bash
-# Step 1: Scan (SQLite recommended for large libraries)
+# Step 1: Scan (SQLite recommended for large libraries, geocoding enabled by default)
 python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db
+
+# Step 1b: Scan without geocoding (faster, no place names)
+python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db --no-geocode
 
 # Step 1b: Quick scan (zero-install, no deps needed)
 python3 scripts/quick_scan.py --source /path/to/your/photos --output ./photo_index.db --dedup
@@ -259,8 +275,43 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-date --d
 # Organize by category (01_Photos, 02_Screenshots, 03_WeChat, etc.)
 python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-category --dry-run
 
+# Organize by location (Country/Region/City/filename)
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-location --dry-run
+
 # Detect connected Android devices and external drives
 python3 scripts/organize_photos.py --source /any --detect-sources
+```
+
+### Reverse Geocoding
+
+```bash
+# Look up a single GPS coordinate
+python3 scripts/reverse_geocode.py --lat 39.9042 --lon 116.4074
+
+# Specify backend and language
+python3 scripts/reverse_geocode.py --lat 37.7749 --lon -122.4194 --backend nominatim --lang en
+
+# Set custom cache directory
+python3 scripts/reverse_geocode.py --lat 31.2304 --lon 121.4737 --cache-dir ./geocache
+```
+
+### EXIF Editing
+
+```bash
+# Strip GPS data from all photos in the index (dry-run first!)
+python3 scripts/edit_exif.py strip-gps --index ./photo_index.db --dry-run
+
+# Actually strip GPS data
+python3 scripts/edit_exif.py strip-gps --index ./photo_index.db
+
+# Only strip GPS from photos that have GPS data
+python3 scripts/edit_exif.py strip-gps --index ./photo_index.db --only-gps
+
+# Set EXIF date on specific files
+python3 scripts/edit_exif.py set-date --date "2025-06-15T14:30:00" --paths photo1.jpg photo2.heic
+
+# Write tags/keywords to specific files
+python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths photo1.jpg photo2.jpg
 ```
 
 ## Smart Priority Rules
@@ -317,17 +368,19 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | Script | Purpose | Input | Output |
 |--------|---------|-------|--------|
 | `quick_scan.py` | Zero-install quick scan (stdlib only, SHA-256 + Apple QL) | Photo directory or `.photoslibrary` | `.db` |
-| `scan_photos.py` | Walk directory, extract metadata + GPS + camera | Photo/video directory | `.db` or `.csv` |
+| `scan_photos.py` | Walk directory, extract metadata + GPS + camera + **place names** | Photo/video directory | `.db` or `.csv` |
 | `scan_photos_library.py` | Scan Photos.app library (reads Photos.sqlite) | `.photoslibrary` bundle | `.db` or `.csv` |
 | `find_exact_duplicates.py` | Group byte-identical files by SHA-256 | `.db` or `.csv` index | `duplicates_exact.csv` |
 | `find_similar_photos.py` | Group visually identical images by pHash, Apple QL, scaled, cross-format, burst | `.db` or `.csv` index | `duplicates_similar.csv` |
 | `generate_move_plan.py` | Smart priority scoring, propose which to move | Duplicates CSV + index | `move_plan.csv` |
 | `apply_move_plan.py` | Execute move plan (move or Trash mode) + undo | `move_plan.csv` | `move_log.csv` |
-| `organize_photos.py` | One-command interactive pipeline | Source directory | Full pipeline output |
+| `organize_photos.py` | One-command interactive pipeline (by-date/by-category/**by-location**) | Source directory | Full pipeline output |
 | `import_to_photos.py` | Import to Photos.app with dedup | Source directory | Import report JSON |
 | `generate_preview.py` | HTML thumbnail preview | Duplicates CSV + index | `preview.html` |
 | `generate_album_report.py` | HTML album organization report (before/after diff) | `.db` index + stats | `album_report.html` |
-| `library_stats.py` | Library health & insights (read-only) | `.db` index | terminal / JSON / `health.html` |
+| `library_stats.py` | Library health & insights (read-only, **location breakdown**) | `.db` index | terminal / JSON / `health.html` |
+| `reverse_geocode.py` | GPS → place names (city/region/country) | Lat/lon coordinates | Place name text |
+| `edit_exif.py` | EXIF editing: strip GPS, set dates, write tags | Index DB or file paths | Modified files + log |
 | `photo_metadata.py` · `constants.py` · `applescript_utils.py` | Shared internal modules (hashing/EXIF, constants, AppleScript) | — | — |
 
 ## Requirements
@@ -373,7 +426,7 @@ Some areas where help is especially appreciated:
 - **Date-based reorganization** — Sort photos into year/month folders based on EXIF dates
 - **Video deduplication** — Key-frame hashing for video files using ffmpeg/opencv
 - **Cross-platform support** — Extend beyond macOS to Linux and Windows
-- **Location-based organize** — Reverse geocoding for GPS metadata
+- **Offline geocoding fallback** — Bundle a lightweight offline reverse-geocode database
 
 ## Changelog
 

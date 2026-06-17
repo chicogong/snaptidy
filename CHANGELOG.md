@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-06-16
+
+### Added
+- **Reverse geocoding** (`reverse_geocode.py`) — Convert GPS coordinates to place names
+  (city/region/country) with 3 backends: CoreLocation (macOS offline, fastest),
+  Locationator (macOS HTTP API), Nominatim (online, always available). Auto-detects
+  best backend. Persistent JSON cache with 3-decimal-place rounding (~111m precision)
+  alongside the output DB.
+- **EXIF editing** (`edit_exif.py`) — Modify photo metadata with 3 operations:
+  `strip-gps` (remove GPS data from indexed photos), `set-date` (set EXIF capture date),
+  `set-tags` (write keywords/tags). Uses piexif for JPEG/TIFF with exiftool fallback
+  for HEIC/RAW. Backup/restore safety: `.bak` files created before modification, cleaned
+  on success, restored on error. `--dry-run` and `--no-backup` flags.
+- **By-location organization** — `organize_photos.py --mode by-location` organizes photos
+  into `Country/Region/City/filename` folder structure using reverse-geocoded place names.
+  Falls back to GPS coordinate zones (1-degree grid ≈ 111km) when no place data available.
+- **Location stats in library health** — `library_stats.py` now includes `by_location`
+  breakdown showing top cities by photo count. Terminal output shows top 15 cities;
+  HTML report includes a dedicated `📍 地点分布` section with purple color theme.
+- **Geocode integration in scan** — `scan_photos.py` and `scan_photos_library.py` now
+  perform reverse geocoding by default, populating `place_city`, `place_region`,
+  `place_country`, `place_country_code` columns. Use `--no-geocode` to disable.
+  Geocode cache initialized at scan start, flushed at scan end.
+- **SQLite schema migration** — New columns added via `ALTER TABLE ADD COLUMN`
+  (backward compatible): `place_city`, `place_region`, `place_country`,
+  `place_country_code`. New indexes: `idx_place_city`, `idx_place_country`.
+
+### Changed
+- `organize_photos.py` `by-location` mode was previously a stub — now fully functional.
+- `scan_photos.py` and `scan_photos_library.py` signatures changed: added
+  `geocode: bool = True` parameter.
+
 ## [3.7.0] - 2026-06-17
 
 ### Added
