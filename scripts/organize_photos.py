@@ -630,11 +630,10 @@ def organize_photos_albums(index_db: str, organize_by: str = "date",
 
     # Step 0: Capture "before" state for diff report
     before_albums = {}
-    if not dry_run:
-        try:
-            before_albums = _photos_list_existing_albums()
-        except Exception:
-            before_albums = {}
+    try:
+        before_albums = _photos_list_existing_albums()
+    except Exception:
+        before_albums = {}
     stats["before_albums"] = before_albums
 
     # Step 1: Group photos by the desired dimension
@@ -739,7 +738,20 @@ def organize_photos_albums(index_db: str, organize_by: str = "date",
     if dry_run:
         print("🏁 Dry run — no albums were created.")
         print(f"   Would create {len(groups)} albums with {sum(len(v) for v in groups.values())} photos")
-        stats["details"] = [{"album": name, "count": len(uuids)} for name, uuids in sorted(groups.items())]
+        total_would_add = sum(len(v) for v in groups.values())
+        stats["photos_added"] = total_would_add
+        stats["details"] = [
+            {"album": name, "count": len(uuids), "added": len(uuids), "existed": False}
+            for name, uuids in sorted(groups.items())
+        ]
+        # Simulate after_albums for dry_run diff report
+        after_albums = dict(before_albums)
+        for name, uuids in sorted(groups.items()):
+            if name in after_albums:
+                after_albums[name] += len(uuids)
+            else:
+                after_albums[name] = len(uuids)
+        stats["after_albums"] = after_albums
         return stats
 
     # Step 3: Check permission
@@ -1364,20 +1376,21 @@ def main() -> None:
                 print(f"   Errors: {album_stats['errors']}")
 
         # Generate HTML report
-        report_path = os.path.join(report_dir, "album_report.html")
+        report_path = os.path.abspath(os.path.join(report_dir, "album_report.html"))
         try:
             from generate_album_report import generate_album_report_html
             report_html = generate_album_report_html(
-                index_db=index_db,
+                index_db=os.path.abspath(index_db),
                 organize_by=organize_by,
                 stats=album_stats,
             )
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
             with open(report_path, "w", encoding="utf-8") as f:
                 f.write(report_html)
             print(f"   📊 Report: {report_path}")
             # Open report in browser
-            import subprocess
-            subprocess.Popen(["open", report_path])
+            import subprocess as _sp
+            _sp.Popen(["open", report_path])
         except Exception as e:
             print(f"   ⚠️  Could not generate report: {e}")
 
@@ -1400,7 +1413,7 @@ def main() -> None:
     print(f"  Manifest saved to: {manifest_path}")
 
     # Generate HTML thumbnail preview
-    preview_path = os.path.join(report_dir, "preview.html")
+    preview_path = os.path.abspath(os.path.join(report_dir, "preview.html"))
     try:
         from generate_preview import generate_preview_html
         html_content = generate_preview_html(
