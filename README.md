@@ -377,6 +377,7 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `organize_photos.py` | One-command interactive pipeline (by-date/by-category/**by-location**) | Source directory | Full pipeline output |
 | `import_to_photos.py` | Import to Photos.app with dedup | Source directory | Import report JSON |
 | `generate_preview.py` | HTML thumbnail preview | Duplicates CSV + index | `preview.html` |
+| `generate_review.py` | Interactive HTML review with smart strategy rules | `.db` index + duplicates CSVs | `review.html` + decision CSV |
 | `generate_album_report.py` | HTML album organization report (before/after diff) | `.db` index + stats | `album_report.html` |
 | `library_stats.py` | Library health & insights (read-only, **location breakdown**) | `.db` index | terminal / JSON / `health.html` |
 | `reverse_geocode.py` | GPS → place names (city/region/country) | Lat/lon coordinates | Place name text |

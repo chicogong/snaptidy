@@ -30,7 +30,7 @@ SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, de
 ## Architecture
 
 ```
-Pipeline: Scan → Dedup → Preview → Plan → Apply → Undo
+Pipeline: Scan → Dedup → Review → Plan → Apply → Undo
           (read)  (read)  (read)   (read)  (move)  (reverse)
 
 Scan modes:
@@ -43,6 +43,8 @@ Dedup modes:
 
 Preview:
   generate_preview.py       — HTML thumbnail preview (KEEP/MOVE badges)
+  generate_review.py        — Interactive review page with smart strategy rules
+                             (album/date/metadata comparison, auto-pick, CSV export)
 
 Plan:
   generate_move_plan.py     — Smart priority move plan generation

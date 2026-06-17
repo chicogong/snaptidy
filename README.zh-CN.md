@@ -376,6 +376,7 @@ python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths pho
 | `organize_photos.py` | 一键交互式流程（按日期/分类/**按地点**） | 来源目录 | 完整流程输出 |
 | `import_to_photos.py` | 导入 Photos.app 并去重 | 来源目录 | 导入报告 JSON |
 | `generate_preview.py` | HTML 缩略图预览 | 重复 CSV + 索引 | `preview.html` |
+| `generate_review.py` | 交互式审核页面（智能策略规则） | `.db` 索引 + 重复 CSV | `review.html` + 决策 CSV |
 | `generate_album_report.py` | HTML 相册整理报告（前后对比） | `.db` 索引 + 统计 | `album_report.html` |
 | `library_stats.py` | 照片库健康与洞察（只读，**地点分布**） | `.db` 索引 | 终端 / JSON / `health.html` |
 | `reverse_geocode.py` | GPS → 地名（城市/地区/国家） | 经纬度坐标 | 地名文本 |

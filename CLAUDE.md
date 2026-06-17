@@ -40,6 +40,14 @@ python3 scripts/generate_preview.py --duplicates ./similar.csv --index ./photo_i
 # With move plan overlay:
 # python3 scripts/generate_preview.py --duplicates ./similar.csv --index ./photo_index.db --plan ./plan.csv --output ./preview.html
 
+# 4b. Interactive review with smart rules (recommended for cleanup)
+python3 scripts/generate_review.py \
+    --index ./photo_index.db \
+    --duplicates ./dupes.csv \
+    --similar ./similar.csv \
+    --output ./review.html
+# → Open review.html in browser, mark keep/remove, export decision CSV
+
 # 5. Generate plan (with smart priorities)
 python3 scripts/generate_move_plan.py \
     --duplicates ./dupes.csv \

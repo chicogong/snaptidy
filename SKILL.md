@@ -2,8 +2,8 @@
 name: snaptidy
 version: 3.8.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags).
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags), interactive review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album).
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit", "照片审核", "photo review", "review duplicates", "审核重复"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -26,7 +26,7 @@ metadata:
 
 ## When to Use
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**.
+Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**, **interactive review page with smart strategy rules**.
 
 **Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑
 
@@ -102,9 +102,36 @@ python3 scripts/generate_move_plan.py --duplicates dup.csv --index index.db \
 
 1. **Scan** — `scan_photos.py` (folders) or `scan_photos_library.py` (Photos.app)
 2. **Find duplicates** — `find_exact_duplicates.py` (SHA-256) or `find_similar_photos.py --detect-all` (8 modes)
-3. **Preview** — `generate_preview.py` → HTML thumbnails with KEEP/MOVE badges
+3. **Review & decide** — `generate_review.py` → Interactive HTML page with smart rules
 4. **Generate plan** — `generate_move_plan.py --strategy quality|oldest|newest|folder`
-5. **Review & apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+5. **Apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+
+## Interactive Review — Smart Dedup with Human Approval
+
+Instead of blindly auto-deleting, use `generate_review.py` to review before any action:
+
+```bash
+# Generate interactive review page
+python3 scripts/generate_review.py \
+  --index photo_index.db \
+  --duplicates duplicates_exact.csv \
+  --similar duplicates_similar.csv \
+  --output review.html
+```
+
+**Page features:**
+- 📋 Shows album membership, date, camera, metadata score for each photo
+- 🧠 Smart strategy rules (pick one, apply to all groups at once):
+  - **保留元数据最全的** — highest EXIF/camera/GPS/date completeness score
+  - **保留日期最早的** — keep the original, remove later copies
+  - **保留日期最新的** — keep the final edit
+  - **保留分辨率最高的** — keep the sharpest version
+  - **保留指定相册的** — keep photos from your preferred album
+- ⭐ Favorites are never auto-marked for deletion
+- 📊 Real-time stats: reviewed count, marked-for-deletion count, reclaimable space
+- 💾 Export decisions as CSV → feed to `apply_move_plan.py`
+
+**Never deletes files directly** — the page only records your decisions.
 
 ## Reverse Geocoding — GPS → Place Names
 
