@@ -95,7 +95,22 @@ python3 scripts/compare_libraries.py --library ~/Pictures/Photos\ Library.photos
 python3 scripts/import_google_takeout.py --source ~/Downloads/takeout --output ./takeout_index.db
 ```
 
-### Option B: One-command interactive workflow
+### Option B: Full pipeline with v3.9 enhancements
+
+```bash
+# Scan + quality + Live Photo + events + timeline in one command
+python3 scripts/organize_photos.py --source ~/Pictures/Export \
+  --assess-quality --detect-live-photos --cluster-events \
+  --generate-timeline --strategy quality --dry-run
+
+# All enhancements enabled
+python3 scripts/organize_photos.py --source ~/Pictures/Export \
+  --assess-quality --detect-live-photos --cluster-events \
+  --generate-timeline --find-orphan-raw --smart-rename \
+  --strategy quality --dry-run
+```
+
+### Option C: One-command interactive workflow
 
 ```bash
 # Interactive — asks preferences step by step

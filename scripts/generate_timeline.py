@@ -53,7 +53,9 @@ def build_timeline_data(index_path: str, max_per_day: int = 0,
                         from_year: int = 0, to_year: int = 0) -> dict:
     """Build timeline data structure from index DB.
 
-    Returns: {years: [{year, months: [{month, days: [{day, photos: [...]}]}]}]}
+    Returns: {years: [{year, months: [{month, days: [{day, photos: [...]}]}]}],
+              events: {event_id: {name, start_date, end_date, city, photo_count}},
+              no_date_count: int}
     """
     conn = sqlite3.connect(index_path)
     conn.row_factory = sqlite3.Row
@@ -64,7 +66,8 @@ def build_timeline_data(index_path: str, max_per_day: int = 0,
                      "width", "height", "category", "media_type",
                      "exif_datetime", "file_mtime"]
     for col in ("camera_make", "camera_model", "place_city", "place_country",
-                "quality_score", "photos_albums", "photos_favorite"):
+                "quality_score", "photos_albums", "photos_favorite",
+                "event_id", "live_photo_group"):
         if col in available_cols:
             select_fields.append(col)
 
@@ -85,6 +88,9 @@ def build_timeline_data(index_path: str, max_per_day: int = 0,
     year_map = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
     no_date = []
 
+    # Also build events index: event_id -> {name, start, end, city, photos}
+    events_index = {}
+
     for row in rows:
         d = dict(row)
         # Determine date
@@ -96,6 +102,33 @@ def build_timeline_data(index_path: str, max_per_day: int = 0,
             year_map[year][month][day].append(d)
         else:
             no_date.append(d)
+
+        # Collect event info
+        eid = d.get("event_id") or ""
+        if eid:
+            if eid not in events_index:
+                events_index[eid] = {
+                    "id": eid,
+                    "city": d.get("place_city") or "",
+                    "country": d.get("place_country") or "",
+                    "start_date": dt_str[:10] if dt_str else "",
+                    "end_date": dt_str[:10] if dt_str else "",
+                    "photo_count": 0,
+                }
+            events_index[eid]["photo_count"] += 1
+            # Update date range
+            if dt_str and dt_str[:10]:
+                if not events_index[eid]["start_date"] or dt_str[:10] < events_index[eid]["start_date"]:
+                    events_index[eid]["start_date"] = dt_str[:10]
+                if not events_index[eid]["end_date"] or dt_str[:10] > events_index[eid]["end_date"]:
+                    events_index[eid]["end_date"] = dt_str[:10]
+            # Build event name
+            city = events_index[eid]["city"]
+            start = events_index[eid]["start_date"]
+            if city:
+                events_index[eid]["name"] = f"{city} ({start})"
+            else:
+                events_index[eid]["name"] = f"Event {eid} ({start})"
 
     # Build nested structure
     years = []
@@ -114,7 +147,7 @@ def build_timeline_data(index_path: str, max_per_day: int = 0,
         year_count = sum(m["count"] for m in months)
         years.append({"year": year, "count": year_count, "months": months})
 
-    return {"years": years, "no_date_count": len(no_date)}
+    return {"years": years, "no_date_count": len(no_date), "events": events_index}
 
 
 # ---------------------------------------------------------------------------
@@ -166,9 +199,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 .badge-burst { background: #5856d6; }
 .badge-video { background: #ff2d55; }
 .quality-badge { position: absolute; bottom: 4px; left: 4px; font-size: 9px; padding: 2px 5px; border-radius: 4px; color: white; font-weight: 600; }
+.event-tag { position: absolute; bottom: 4px; right: 4px; font-size: 8px; padding: 1px 4px; border-radius: 3px; color: white; font-weight: 500; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .q-high { background: #34c759; }
 .q-mid { background: #ff9500; }
 .q-low { background: #ff3b30; }
+
+.event-banner { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 16px; border-radius: 8px; margin: 8px 0 4px 16px; font-size: 13px; display: flex; justify-content: space-between; align-items: center; }
+.event-banner .event-name { font-weight: 600; }
+.event-banner .event-dates { font-size: 11px; opacity: 0.85; }
 
 .empty { text-align: center; padding: 60px 20px; color: #86868b; }
 .empty h3 { font-size: 18px; margin-bottom: 8px; }
@@ -200,6 +238,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
     </select>
     <button onclick="collapseAll()">Collapse All</button>
     <button onclick="expandAll()">Expand All</button>
+    <label>Event:</label>
+    <select id="eventFilter" onchange="applyFilter()">
+      <option value="all">All Events</option>
+    </select>
     <span class="stat" id="stats"></span>
   </div>
 </div>
@@ -224,9 +266,31 @@ function qualityBadge(qs) {
   return `<span class="quality-badge ${cls}">Q${qs}</span>`;
 }
 
+function eventTag(eid) {
+  if (!eid || !DATA.events || !DATA.events[eid]) return '';
+  const ev = DATA.events[eid];
+  const colors = ['#667eea','#764ba2','#f093fb','#f5576c','#4facfe','#00f2fe','#43e97b','#fa709a','#feb47b'];
+  const idx = Object.keys(DATA.events).indexOf(eid);
+  const bg = colors[idx % colors.length];
+  return `<span class="event-tag" style="background:${bg}" title="${ev.name}">${ev.name.split('(')[0].trim()}</span>`;
+}
+
+function populateEventFilter() {
+  if (!DATA.events || !Object.keys(DATA.events).length) {
+    document.getElementById('eventFilter').style.display = 'none';
+    return;
+  }
+  const sel = document.getElementById('eventFilter');
+  sel.innerHTML = '<option value="all">All Events</option>';
+  for (const [eid, ev] of Object.entries(DATA.events)) {
+    sel.innerHTML += `<option value="${eid}">${ev.name} (${ev.photo_count})</option>`;
+  }
+}
+
 function renderTimeline() {
   const cat = document.getElementById('category').value;
   const zoom = document.getElementById('zoom').value;
+  const eventFilter = document.getElementById('eventFilter').value;
   const container = document.getElementById('timeline');
   let totalShown = 0;
 
@@ -235,6 +299,9 @@ function renderTimeline() {
     let yearHtml = '';
     let yearShown = 0;
 
+    // Track which events appear in this year for event banners
+    let yearEvents = {};
+
     for (const m of y.months) {
       let monthHtml = '';
       let monthShown = 0;
@@ -242,13 +309,21 @@ function renderTimeline() {
       for (const d of m.days) {
         let photos = d.photos;
         if (cat !== 'all') photos = photos.filter(p => p.category === cat);
+        if (eventFilter !== 'all') photos = photos.filter(p => p.event_id === eventFilter);
         if (photos.length === 0) continue;
 
         const dayLabel = `${parseInt(d.day)} ${monthName(m.month)}`;
         const dayPhotos = photos.map(p => {
           const thumb = p.thumb ? `<img src="data:image/jpeg;base64,${p.thumb}" alt="">` : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:10px;color:#86868b;">No preview</div>`;
-          return `<div class="photo-thumb" title="${p.filename}\n${(p.camera_make||'')} ${(p.camera_model||'')}\n${p.size_str||''}">${thumb}${categoryBadge(p.category)}${qualityBadge(p.quality_score||-1)}</div>`;
+          return `<div class="photo-thumb" title="${p.filename}\n${(p.camera_make||'')} ${(p.camera_model||'')}\n${p.size_str||''}">${thumb}${categoryBadge(p.category)}${qualityBadge(p.quality_score||-1)}${eventTag(p.event_id||'')}</div>`;
         }).join('');
+
+        // Collect events for this day
+        for (const p of photos) {
+          if (p.event_id && DATA.events && DATA.events[p.event_id]) {
+            yearEvents[p.event_id] = DATA.events[p.event_id];
+          }
+        }
 
         if (zoom === 'day') {
           monthHtml += `<div class="day-section"><div class="day-header">${dayLabel} (${photos.length})</div><div class="photo-grid">${dayPhotos}</div></div>`;
@@ -265,12 +340,13 @@ function renderTimeline() {
         for (const d of m.days) {
           let photos = d.photos;
           if (cat !== 'all') photos = photos.filter(p => p.category === cat);
+          if (eventFilter !== 'all') photos = photos.filter(p => p.event_id === eventFilter);
           samplePhotos.push(...photos);
         }
         if (samplePhotos.length === 0) continue;
         const samples = samplePhotos.slice(0, 30).map(p => {
           const thumb = p.thumb ? `<img src="data:image/jpeg;base64,${p.thumb}" alt="">` : '';
-          return `<div class="photo-thumb" title="${p.filename}">${thumb}${categoryBadge(p.category)}${qualityBadge(p.quality_score||-1)}</div>`;
+          return `<div class="photo-thumb" title="${p.filename}">${thumb}${categoryBadge(p.category)}${qualityBadge(p.quality_score||-1)}${eventTag(p.event_id||'')}</div>`;
         }).join('');
         monthHtml = `<div class="photo-grid">${samples}</div>`;
       }
@@ -283,18 +359,27 @@ function renderTimeline() {
     if (yearShown === 0) continue;
     totalShown += yearShown;
 
+    // Event banners for the year
+    let eventHtml = '';
+    if (Object.keys(yearEvents).length > 0 && zoom !== 'year') {
+      for (const [eid, ev] of Object.entries(yearEvents)) {
+        eventHtml += `<div class="event-banner"><span class="event-name">📍 ${ev.name}</span><span class="event-dates">${ev.start_date} ~ ${ev.end_date} · ${ev.photo_count} photos</span></div>`;
+      }
+    }
+
     html += `<div class="year-block">
       <div class="year-header" onclick="toggleYear(this)">
         <h2>${y.year}</h2>
         <span class="count">${yearShown} photos</span>
         <span class="toggle">▼</span>
       </div>
+      ${eventHtml}
       ${yearHtml}
     </div>`;
   }
 
   if (!html) {
-    html = '<div class="empty"><h3>No photos found</h3><p>Try adjusting the category filter</p></div>';
+    html = '<div class="empty"><h3>No photos found</h3><p>Try adjusting the category or event filter</p></div>';
   }
   container.innerHTML = html;
   document.getElementById('stats').textContent = `${totalShown} photos shown`;
@@ -320,6 +405,7 @@ function expandAll() {
   document.querySelectorAll('.toggle').forEach(t => t.textContent = '▼');
 }
 
+populateEventFilter();
 renderTimeline();
 </script>
 </body>
@@ -361,6 +447,7 @@ def generate_timeline_html(index_db: str, max_per_day: int = 0,
                     photo["camera_make"] = meta.get("camera_make", "")
                     photo["camera_model"] = meta.get("camera_model", "")
                     photo["quality_score"] = int(meta.get("quality_score") or -1)
+                    photo["event_id"] = meta.get("event_id") or ""
 
     data_json = json.dumps(timeline, ensure_ascii=False)
     return _HTML_TEMPLATE.replace("%%TIMELINE_DATA%%", data_json)

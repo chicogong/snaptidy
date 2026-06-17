@@ -48,6 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   option that selects the photo with the highest `quality_score` to keep.
 - **Quality score integration** in `generate_move_plan.py` — `--strategy quality`
   now considers blur penalty and quality_score bonus when scoring duplicates.
+- **Live Photo protection** in `generate_move_plan.py` — Reads `live_photo_group`
+  column to keep Live Photo pairs together: if one component is kept, its partner
+  is never moved; if one is moved, its partner is carried along.
+- **Event clustering in timeline** (`generate_timeline.py`) — Reads `event_id` from
+  DB (written by `cluster_events.py --write-db`) and shows event banners, colored
+  event tags on thumbnails, and event filter dropdown.
+- **v3.9 enhancement flags** in `organize_photos.py` — New flags: `--assess-quality`,
+  `--detect-live-photos`, `--generate-timeline`, `--cluster-events`, `--cluster-gap`,
+  `--find-orphan-raw`, `--find-similar-videos`, `--smart-rename`, `--rename-template`.
+  All run after scan, before dedup/organize.
+- **SKILL.md updated** to v3.9.0 with all 10 new scripts, triggers, and usage examples.
 
 ## [3.8.0] - 2026-06-16
 

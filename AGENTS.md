@@ -295,4 +295,38 @@ Compute blur/brightness/contrast/quality metrics for each image. Results stored 
 
 - `generate_move_plan.py --strategy quality` considers blur penalty and quality_score bonus
 - `generate_review.py` shows quality badge (Q0-100) on review cards, adds "保留画质最好的" strategy
+- `organize_photos.py --assess-quality` runs quality assessment after scan
 - Use `--incremental` to only assess photos without existing scores
+
+## Live Photo Protection
+
+`detect_live_photos.py` writes `live_photo_group` column. `generate_move_plan.py` reads this column:
+
+- **Keep protection**: If the kept file is part of a Live Photo pair, its partner is never moved
+- **Carry along**: If a Live Photo component is moved, its partner is moved to the same destination
+- **organize_photos.py --detect-live-photos** enables Live Photo detection before dedup
+
+## Event Clustering + Timeline Integration
+
+`cluster_events.py --write-db` writes `event_id` column. `generate_timeline.py` reads this column:
+
+- **Event banners**: Purple gradient banners within each year showing event name, dates, photo count
+- **Event tags**: Colored tags on individual photo thumbnails showing event assignment
+- **Event filter**: Dropdown to filter timeline by specific event
+- **organize_photos.py --cluster-events** runs clustering and writes event_id to DB
+
+## v3.9 Enhancement Flags (organize_photos.py)
+
+All v3.9 features are available as enhancement flags that run after scan but before dedup/organize:
+
+| Flag | Script | Effect |
+|------|--------|--------|
+| `--assess-quality` | assess_quality.py | Compute blur/brightness/contrast scores |
+| `--detect-live-photos` | detect_live_photos.py | Identify HEIC+MOV pairs |
+| `--generate-timeline` | generate_timeline.py | Interactive HTML timeline |
+| `--cluster-events` | cluster_events.py | Auto-group photos into events |
+| `--cluster-gap N` | cluster_events.py | Event gap in hours (default: 4) |
+| `--find-orphan-raw` | find_orphan_raw.py | Find RAW without JPEG companion |
+| `--find-similar-videos` | find_similar_videos.py | Video dedup via frame sampling |
+| `--smart-rename` | rename_photos.py | Rename by EXIF template (dry-run) |
+| `--rename-template T` | rename_photos.py | Template string (default: {date}_{camera}_{seq}) |

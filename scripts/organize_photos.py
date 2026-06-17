@@ -256,7 +256,8 @@ def run_detect(prefs: dict, index_db: str, output_csv: str) -> bool:
     return len(all_results) > 0
 
 
-def run_plan(prefs: dict, duplicates_csv: str, index_db: str, plan_csv: str, target_root: str) -> int:
+def run_plan(prefs: dict, duplicates_csv: str, index_db: str, plan_csv: str, target_root: str,
+             live_photo_groups: dict = None, live_photo_map: dict = None) -> int:
     """Step 3: Generate move plan. Returns number of planned moves."""
     groups, match_types = read_duplicates(duplicates_csv)
     metadata = load_metadata_db(index_db)
@@ -266,6 +267,8 @@ def run_plan(prefs: dict, duplicates_csv: str, index_db: str, plan_csv: str, tar
         strategy=prefs["strategy"],
         prefer_folders=prefs.get("prefer_folders", []),
         use_trash=(prefs["trash_mode"] in ("trash", "photos-trash")),
+        live_photo_groups=live_photo_groups,
+        live_photo_map=live_photo_map,
     )
 
     # Write plan
@@ -1238,6 +1241,25 @@ def main() -> None:
     parser.add_argument("--album-organize-by", choices=list(ALBUM_ORGANIZE_MODES.keys()), default="date",
                         help="Album organization dimension for --mode photos-album (default: date). "
                              "Options: date (year/month), year, category, format, smart (year/category)")
+    # v3.9 enhancement flags
+    parser.add_argument("--assess-quality", action="store_true",
+                        help="Run quality assessment (blur/brightness/contrast) after scan")
+    parser.add_argument("--detect-live-photos", action="store_true",
+                        help="Detect Live Photo pairs (HEIC+MOV) and protect during dedup")
+    parser.add_argument("--generate-timeline", action="store_true",
+                        help="Generate interactive timeline HTML after scan")
+    parser.add_argument("--cluster-events", action="store_true",
+                        help="Cluster photos into events by time + location")
+    parser.add_argument("--cluster-gap", type=int, default=4,
+                        help="Event clustering time gap in hours (default: 4)")
+    parser.add_argument("--find-orphan-raw", action="store_true",
+                        help="Find orphan RAW files without JPEG companion")
+    parser.add_argument("--find-similar-videos", action="store_true",
+                        help="Find similar videos via frame sampling + pHash (requires ffmpeg)")
+    parser.add_argument("--smart-rename", action="store_true",
+                        help="Smart rename photos by EXIF metadata")
+    parser.add_argument("--rename-template", default="{date}_{camera}_{seq}",
+                        help="Rename template for --smart-rename (default: {date}_{camera}_{seq})")
     args = parser.parse_args()
 
     # Auto-detect source type
@@ -1332,6 +1354,176 @@ def main() -> None:
         except sqlite3.OperationalError:
             pass  # photos_cloud_state column may not exist in file-system scans
 
+    # ------------------------------------------------------------------
+    # v3.9 Enhancement steps (run after scan, before dedup/organize)
+    # ------------------------------------------------------------------
+    enhancement_step = 1
+    total_enhancements = sum([
+        args.assess_quality, args.detect_live_photos, args.generate_timeline,
+        args.cluster_events, args.find_orphan_raw, args.find_similar_videos,
+        args.smart_rename,
+    ])
+
+    if total_enhancements > 0:
+        print()
+        print(f"🔧 Enhancement Steps ({total_enhancements} requested)...")
+
+    # Quality Assessment
+    if args.assess_quality:
+        print(f"\n  📊 Enhancement {enhancement_step}/{total_enhancements}: Quality Assessment...")
+        try:
+            from assess_quality import assess_quality as run_assess
+            result = run_assess(index_db)
+            assessed = result.get("assessed", 0) if isinstance(result, dict) else 0
+            print(f"     Assessed {assessed} photos")
+        except ImportError:
+            # Fallback: run as subprocess
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "assess_quality.py"),
+                 "--index", index_db],
+                capture_output=True, text=True, timeout=600,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Quality assessment failed: {e}")
+        enhancement_step += 1
+
+    # Live Photo Detection
+    if args.detect_live_photos:
+        print(f"\n  🎵 Enhancement {enhancement_step}/{total_enhancements}: Live Photo Detection...")
+        try:
+            from detect_live_photos import find_live_photo_pairs, write_pairs_to_db
+            pairs = find_live_photo_pairs(index_db)
+            if pairs:
+                updated = write_pairs_to_db(index_db, pairs)
+                print(f"     Found {len(pairs)} Live Photo pairs ({updated} files updated)")
+            else:
+                print("     No Live Photo pairs found")
+        except ImportError:
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "detect_live_photos.py"),
+                 "--index", index_db],
+                capture_output=True, text=True, timeout=120,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Live Photo detection failed: {e}")
+        enhancement_step += 1
+
+    # Event Clustering
+    if args.cluster_events:
+        print(f"\n  📊 Enhancement {enhancement_step}/{total_enhancements}: Event Clustering...")
+        events_path = os.path.join(scan_dir, "events.json")
+        try:
+            from cluster_events import cluster_events, load_photos_sorted, write_events_to_db
+            photos = load_photos_sorted(index_db)
+            events = cluster_events(photos, gap_hours=args.cluster_gap)
+            if events:
+                # Save events report (compact version without photo paths)
+                report_events = []
+                for e in events:
+                    r = dict(e)
+                    r["photo_paths"] = r.pop("photos", [])
+                    report_events.append(r)
+                with open(events_path, "w", encoding="utf-8") as f:
+                    json.dump({"total_events": len(events), "events": report_events},
+                              f, indent=2, ensure_ascii=False, default=str)
+                updated = write_events_to_db(index_db, events)
+                print(f"     Found {len(events)} events ({updated} photos tagged)")
+            else:
+                print("     No events detected")
+        except ImportError:
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "cluster_events.py"),
+                 "--index", index_db, "--output", events_path,
+                 "--gap-hours", str(args.cluster_gap), "--write-db"],
+                capture_output=True, text=True, timeout=120,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Event clustering failed: {e}")
+        enhancement_step += 1
+
+    # Orphan RAW Detection
+    if args.find_orphan_raw:
+        print(f"\n  📷 Enhancement {enhancement_step}/{total_enhancements}: Orphan RAW Detection...")
+        orphan_path = os.path.join(scan_dir, "orphan_raw.csv")
+        try:
+            from find_orphan_raw import find_orphans, write_report
+            results = find_orphans(index_db)
+            orphan_count = len(results.get("orphan_raw", []))
+            if orphan_count > 0:
+                write_report(results, orphan_path)
+                print(f"     Found {orphan_count} orphan RAW files → {orphan_path}")
+            else:
+                print("     No orphan RAW files found")
+        except ImportError:
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "find_orphan_raw.py"),
+                 "--index", index_db, "--output", orphan_path],
+                capture_output=True, text=True, timeout=120,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Orphan RAW detection failed: {e}")
+        enhancement_step += 1
+
+    # Similar Videos Detection
+    if args.find_similar_videos:
+        print(f"\n  🎬 Enhancement {enhancement_step}/{total_enhancements}: Similar Video Detection...")
+        video_dupes_path = os.path.join(scan_dir, "similar_videos.csv")
+        try:
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "find_similar_videos.py"),
+                 "--index", index_db, "--output", video_dupes_path],
+                capture_output=True, text=True, timeout=600,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Video dedup failed: {e}")
+        enhancement_step += 1
+
+    # Smart Rename
+    if args.smart_rename:
+        print(f"\n  ✏️  Enhancement {enhancement_step}/{total_enhancements}: Smart Rename (dry-run)...")
+        try:
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "rename_photos.py"),
+                 "--index", index_db, "--template", args.rename_template],
+                capture_output=True, text=True, timeout=120,
+            )
+            print(f"     {result.stdout.strip()}")
+            print("     Use rename_photos.py --execute to apply")
+        except Exception as e:
+            print(f"     ⚠️  Smart rename failed: {e}")
+        enhancement_step += 1
+
+    # Timeline Generation (always last, so it benefits from all enrichment)
+    if args.generate_timeline:
+        print(f"\n  📅 Enhancement {enhancement_step}/{total_enhancements}: Timeline Generation...")
+        timeline_path = os.path.abspath(os.path.join(report_dir, "timeline.html"))
+        try:
+            from generate_timeline import generate_timeline_html
+            html = generate_timeline_html(index_db, max_thumbs=2000)
+            with open(timeline_path, "w", encoding="utf-8") as f:
+                f.write(html)
+            print(f"     Timeline saved: {timeline_path}")
+            subprocess.Popen(["open", timeline_path])
+        except ImportError:
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "generate_timeline.py"),
+                 "--index", index_db, "--output", timeline_path],
+                capture_output=True, text=True, timeout=120,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Timeline generation failed: {e}")
+        enhancement_step += 1
+
+    if total_enhancements > 0:
+        print()
+        print(f"  ✅ Enhancement steps complete.")
+
     # List albums and exit (only for Photos Library sources)
     if args.list_albums:
         _list_albums(index_db)
@@ -1380,7 +1572,15 @@ def main() -> None:
 
         print()
         print("📝 Step 3/5: Generating move plan...")
-        num_moves = run_plan(prefs, duplicates_csv, index_db, plan_csv, prefs["source_path"])
+        # Load Live Photo info for move plan protection
+        lp_groups, lp_map = {}, {}
+        try:
+            from generate_move_plan import load_live_photo_groups
+            lp_groups, lp_map = load_live_photo_groups(index_db)
+        except (ImportError, Exception):
+            pass
+        num_moves = run_plan(prefs, duplicates_csv, index_db, plan_csv, prefs["source_path"],
+                             live_photo_groups=lp_groups, live_photo_map=lp_map)
         print(f"  Generated {num_moves} planned moves")
 
     elif mode == "by-date":

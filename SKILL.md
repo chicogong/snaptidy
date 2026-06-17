@@ -1,9 +1,9 @@
 ---
 name: snaptidy
-version: 3.8.0
+version: 3.9.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags), interactive review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album).
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit", "照片审核", "photo review", "review duplicates", "审核重复"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags), interactive review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album/best quality), quality assessment (blur/brightness/contrast → 0-100 score integrated with dedup), Live Photo detection (keep pairs together during dedup), orphan RAW cleanup, interactive timeline viewer, Photos.app vs file-system library compare, Google Takeout import with metadata merge, GPX geotagging, event clustering by time+location, video dedup via frame sampling+pHash, smart rename by EXIF date/camera/location templates.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit", "照片审核", "photo review", "review duplicates", "审核重复", "照片质量", "photo quality", "quality assessment", "Live Photo", "orphan RAW", "timeline", "照片时间线", "library compare", "Google Takeout", "GPX geotag", "event clustering", "照片事件", "video dedup", "视频去重", "smart rename", "照片重命名"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -26,9 +26,9 @@ metadata:
 
 ## When to Use
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**, **interactive review page with smart strategy rules**.
+Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**, **interactive review page with smart strategy rules**, **quality assessment (blur/brightness/contrast → dedup integration)**, **Live Photo detection (keep pairs together)**, **orphan RAW cleanup**, **interactive timeline viewer**, **Photos.app vs file-system compare**, **Google Takeout import**, **GPX geotagging**, **event clustering**, **video dedup**, **smart rename**.
 
-**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑
+**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑 · 照片质量 · Live Photo · 时间线 · 视频去重 · 照片重命名 · 照片事件
 
 ## Safety Rules — MANDATORY
 
@@ -102,9 +102,49 @@ python3 scripts/generate_move_plan.py --duplicates dup.csv --index index.db \
 
 1. **Scan** — `scan_photos.py` (folders) or `scan_photos_library.py` (Photos.app)
 2. **Find duplicates** — `find_exact_duplicates.py` (SHA-256) or `find_similar_photos.py --detect-all` (8 modes)
-3. **Review & decide** — `generate_review.py` → Interactive HTML page with smart rules
-4. **Generate plan** — `generate_move_plan.py --strategy quality|oldest|newest|folder`
-5. **Apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+3. **Assess quality** — `assess_quality.py` (blur/brightness/contrast → DB, used by dedup & review)
+4. **Detect Live Photos** — `detect_live_photos.py` (pairs HEIC+MOV, protects during dedup)
+5. **Review & decide** — `generate_review.py` → Interactive HTML page with smart rules
+6. **Generate plan** — `generate_move_plan.py --strategy quality|oldest|newest|folder`
+7. **Apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+
+## v3.9 New Features
+
+| Script | Trigger | What it does |
+|--------|---------|-------------|
+| `assess_quality.py` | "照片质量", "quality assessment" | Blur/brightness/contrast → Q0-100 score, auto-used in dedup strategy & review page |
+| `detect_live_photos.py` | "Live Photo" | Pairs HEIC+MOV, prevents splitting during dedup |
+| `find_orphan_raw.py` | "orphan RAW" | RAW without JPEG companion (or vice versa) |
+| `generate_timeline.py` | "timeline", "照片时间线" | Interactive HTML timeline, zoom year/month/day |
+| `compare_libraries.py` | "library compare" | Photos.app vs file-system, SHA-256 + filename matching |
+| `import_google_takeout.py` | "Google Takeout" | Import Google Photos export, merge JSON metadata to EXIF |
+| `gpx_geotag.py` | "GPX geotag" | Assign GPS from GPX track files, interpolation |
+| `cluster_events.py` | "event clustering", "照片事件" | Auto-group photos by time + location |
+| `find_similar_videos.py` | "video dedup", "视频去重" | Frame sampling + pHash for video duplicates |
+| `rename_photos.py` | "smart rename", "照片重命名" | Rename by EXIF date/camera/location: `{date}_{camera}_{seq}` |
+
+```bash
+# Quality assessment → feeds into dedup scoring
+python3 scripts/assess_quality.py --index photo_index.db
+
+# Detect Live Photos → protects pairs during dedup
+python3 scripts/detect_live_photos.py --index photo_index.db
+
+# Interactive timeline
+python3 scripts/generate_timeline.py --index photo_index.db --output timeline.html
+
+# Event clustering (write event_id back to DB for timeline integration)
+python3 scripts/cluster_events.py --index photo_index.db --output events.json --write-db
+
+# Smart rename (dry-run first)
+python3 scripts/rename_photos.py --index photo_index.db --template "{date}_{camera}_{seq}"
+
+# GPX geotag
+python3 scripts/gpx_geotag.py --index photo_index.db --gpx track.gpx --dry-run
+
+# Video dedup
+python3 scripts/find_similar_videos.py --index photo_index.db --output video_dupes.csv
+```
 
 ## Interactive Review — Smart Dedup with Human Approval
 

@@ -61,6 +61,38 @@ def load_metadata_db(index_path: str) -> dict:
     return metadata
 
 
+def load_live_photo_groups(index_path: str) -> dict:
+    """Load Live Photo pairing info from DB.
+
+    Returns {group_id: [file_path, ...]} and {file_path: group_id}.
+    If live_photo_group column doesn't exist or has no data, returns empty dicts.
+    """
+    pairs = {}       # group_id -> [file_path, ...]
+    file_to_group = {}  # file_path -> group_id
+
+    try:
+        conn = sqlite3.connect(index_path)
+        available_cols = {row[1] for row in conn.execute("PRAGMA table_info(photos)").fetchall()}
+        if "live_photo_group" not in available_cols:
+            conn.close()
+            return pairs, file_to_group
+
+        cursor = conn.execute(
+            "SELECT file_path, live_photo_group FROM photos "
+            "WHERE live_photo_group IS NOT NULL AND live_photo_group != ''"
+        )
+        for row in cursor:
+            path = row[0]
+            gid = row[1]
+            pairs.setdefault(gid, []).append(path)
+            file_to_group[path] = gid
+        conn.close()
+    except sqlite3.OperationalError:
+        pass
+
+    return pairs, file_to_group
+
+
 def load_metadata_csv(index_path: str) -> dict:
     """Load file metadata from CSV.  Returns {file_path: {field: value}}."""
     metadata = {}
@@ -200,11 +232,20 @@ def score_file(meta: dict, strategy: str, prefer_folders: list = None) -> float:
 
 def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: str,
                   strategy: str = "quality", prefer_folders: list = None,
-                  use_trash: bool = False) -> list:
-    """Generate a move plan using smart priority rules."""
+                  use_trash: bool = False, live_photo_groups: dict = None,
+                  live_photo_map: dict = None) -> list:
+    """Generate a move plan using smart priority rules.
+
+    Args:
+        live_photo_groups: {group_id: [file_path, ...]} from detect_live_photos.py
+        live_photo_map: {file_path: group_id} reverse lookup for Live Photo pairs
+    """
     plan = []
     review_folder = "06_Duplicates_待确认删除" if not use_trash else "__TRASH__"
     seen_paths = set()  # Track files already added to plan (deduplicate across groups)
+
+    live_photo_groups = live_photo_groups or {}
+    live_photo_map = live_photo_map or {}
 
     # Human-readable labels for match types
     MATCH_TYPE_LABELS = {
@@ -261,6 +302,16 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
             # Skip if already in plan from another group
             if path in seen_paths:
                 continue
+
+            # Live Photo protection: if the kept file is part of a Live Photo pair,
+            # also protect its partner from being moved
+            if live_photo_map and keep_path in live_photo_map:
+                lp_group = live_photo_map[keep_path]
+                lp_partners = live_photo_groups.get(lp_group, [])
+                if path in lp_partners:
+                    # This file is the Live Photo partner of the kept file — don't move it
+                    continue
+
             # Build reason for moving
             move_reason_parts = [f"duplicate of {keep_path} {keep_info}"]
             if match_label:
@@ -307,6 +358,33 @@ def generate_plan(groups: dict, match_types: dict, metadata: dict, target_root: 
                 "reason": reason,
             })
             seen_paths.add(path)
+
+            # Live Photo: carry partner along when moving one component
+            if live_photo_map and path in live_photo_map:
+                lp_group = live_photo_map[path]
+                for partner_path in live_photo_groups.get(lp_group, []):
+                    if partner_path == path or partner_path in seen_paths:
+                        continue
+                    # Only carry if the partner is NOT the kept file
+                    if partner_path == keep_path:
+                        continue
+                    partner_meta = metadata.get(partner_path, {})
+                    try:
+                        partner_rel = os.path.relpath(partner_path, target_root)
+                    except ValueError:
+                        partner_rel = os.path.basename(partner_path)
+                    if use_trash:
+                        partner_dest = os.path.join(target_root, review_folder, os.path.basename(partner_path))
+                    else:
+                        partner_dest = os.path.join(target_root, review_folder, partner_rel)
+                    plan.append({
+                        "action": "move",
+                        "source_path": partner_path,
+                        "target_path": partner_dest,
+                        "reason": f"Live Photo partner of {path}",
+                    })
+                    seen_paths.add(partner_path)
+
     return plan
 
 
@@ -422,10 +500,19 @@ def main() -> None:
         for path, meta in metadata.items():
             meta["_prefer_albums"] = args.prefer_album
 
+    # Load Live Photo pairing info (if available)
+    lp_groups, lp_map = {}, {}
+    if args.index and index_path.endswith(".db"):
+        lp_groups, lp_map = load_live_photo_groups(index_path)
+        if lp_groups:
+            print(f"  Live Photo protection: {len(lp_groups)} pairs detected")
+
     plan = generate_plan(dups, match_types, metadata, target_root,
                          strategy=args.strategy,
                          prefer_folders=args.prefer_folder,
-                         use_trash=args.trash)
+                         use_trash=args.trash,
+                         live_photo_groups=lp_groups,
+                         live_photo_map=lp_map)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.plan)), exist_ok=True)
     if args.format == "human":
