@@ -238,7 +238,7 @@ def write_report(results: list, report_path: str):
         return
 
     with open(report_path, "w", newline="", encoding="utf-8-sig") as f:
-        writer = csv.DictWriter(f, fieldnames=["file_path", "corruption_type", "corruption_detail"])
+        writer = csv.DictWriter(f, fieldnames=["file_path", "is_corrupted", "corruption_type", "corruption_detail"])
         writer.writeheader()
         writer.writerows(corrupted)
 

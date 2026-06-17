@@ -13,19 +13,19 @@ Comparison methods:
 Usage:
     # Compare Photos.app library against a file-system folder
     python3 scripts/compare_libraries.py \
-        --library ~/Pictures/Photos\ Library.photoslibrary \
+        --library ~/Pictures/"Photos Library.photoslibrary" \
         --folder ~/Pictures/Export \
         --output comparison.json
 
     # CSV output
     python3 scripts/compare_libraries.py \
-        --library ~/Pictures/Photos\ Library.photoslibrary \
+        --library ~/Pictures/"Photos Library.photoslibrary" \
         --folder ~/Pictures/Export \
         --output comparison.csv
 
     # Only show unique items (not shared)
     python3 scripts/compare_libraries.py \
-        --library ~/Pictures/Photos\ Library.photoslibrary \
+        --library ~/Pictures/"Photos Library.photoslibrary" \
         --folder ~/Pictures/Export \
         --output comparison.csv --unique-only
 """
