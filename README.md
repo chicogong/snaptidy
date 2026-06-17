@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.9-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.10-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
@@ -36,6 +36,17 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 **iPhone users**: You don't need iCloud sync to organize your photos. Connect your iPhone via USB and SnapTidy can scan the Photos.app library directly, or use Finder to sync photos to a local folder first. Tools like [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) also allow direct USB access to your iPhone's DCIM without iCloud.
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
+
+## What's New in v3.10
+
+| Feature | Description |
+|---------|-------------|
+| 💥 **Corrupted File Detection** | `detect_corrupted.py` — Find broken/truncated images and unplayable videos; layered Pillow verify+load, ffmpeg probe; parallel processing |
+| 📅 **Photo Date Correction** | `fix_dates.py` — Fix missing EXIF dates from filename patterns (15+ patterns), neighbor photos, or file mtime; supports `--dry-run`, `--write-exif` |
+| 🔄 **Backup Verification** | `verify_backup.py` — Verify backup completeness; quick (filename+size) or full (SHA-256, catches renames); coverage % report |
+| 📂 **Duplicate Folder Detection** | `find_duplicate_folders.py` — Find folders that are complete or near-complete duplicates; Jaccard similarity; near-duplicate grouping |
+| 💡 **Space What-If** | `library_stats.py --what-if` — "How much space would I save if I delete all screenshots/duplicates/RAW?" |
+| 📋 **Event Album Creation** | `organize_photos.py --create-event-albums` — Auto-create Photos.app albums from event clustering results |
 
 ## What's New in v3.9
 
@@ -125,6 +136,11 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - 📊 **Event Clustering** — Auto-group photos by time + location
 - 🎬 **Video Dedup** — Frame sampling + pHash for video duplicates
 - ✏️ **Smart Rename** — Rename by EXIF metadata with configurable templates
+- 💥 **Corrupted Detection** — Find broken/truncated images and unplayable videos
+- 📅 **Date Correction** — Fix missing EXIF dates from filename patterns, neighbors, or file mtime
+- 🔄 **Backup Verification** — Verify backup completeness (quick or SHA-256 full mode)
+- 📂 **Duplicate Folder Detection** — Find folders that are complete or near-complete duplicates
+- 💡 **Space What-If** — Calculate space savings by removing specific categories
 - 🛡️ **Safety-First Design** — Read-only scanning, move-only operations, Trash mode with Finder recovery, CSV-based audit trail
 - 💾 **Zero Data Loss** — Streaming SQLite writes with per-entry commit
 - 💬 **Conversation-Driven** — Interact through your AI assistant; no GUI or config files needed
@@ -495,6 +511,65 @@ python3 scripts/rename_photos.py --index ./photo_index.db --template "{date}_{ca
 python3 scripts/rename_photos.py --index ./photo_index.db --template "{date}_{city}_{seq}" --execute
 ```
 
+### Corrupted File Detection
+
+```bash
+# Check for corrupted images and videos
+python3 scripts/detect_corrupted.py --index ./photo_index.db
+
+# With CSV report and parallel processing
+python3 scripts/detect_corrupted.py --index ./photo_index.db --report corrupted.csv --parallel 8
+
+# Incremental (only check files not yet verified)
+python3 scripts/detect_corrupted.py --index ./photo_index.db --incremental
+```
+
+### Fix Missing Dates
+
+```bash
+# Fix dates from all sources (filename, neighbors, file mtime)
+python3 scripts/fix_dates.py --index ./photo_index.db --dry-run
+
+# Actually fix dates and write to EXIF
+python3 scripts/fix_dates.py --index ./photo_index.db --write-exif --report fixed.csv
+
+# Only use filename extraction
+python3 scripts/fix_dates.py --index ./photo_index.db --strategy filename-only
+```
+
+### Backup Verification
+
+```bash
+# Quick check (filename + size)
+python3 scripts/verify_backup.py --source ~/Photos --backup /Volumes/Backup/Photos
+
+# Full SHA-256 check (catches renamed files)
+python3 scripts/verify_backup.py --source ~/Photos --backup /Volumes/Backup/Photos --full
+
+# Using existing index DB
+python3 scripts/verify_backup.py --index ./photo_index.db --backup /Volumes/Backup/Photos --full --report report.csv
+```
+
+### Duplicate Folder Detection
+
+```bash
+# Find folders with ≥50% similar content
+python3 scripts/find_duplicate_folders.py --index ./photo_index.db
+
+# Scan filesystem directly (slower, no index needed)
+python3 scripts/find_duplicate_folders.py --source ~/Photos --threshold 0.7 --report dup_folders.csv
+```
+
+### Space What-If Analysis
+
+```bash
+# "How much space would I save if I delete all screenshots?"
+python3 scripts/library_stats.py --index ./photo_index.db --what-if
+
+# With HTML report
+python3 scripts/library_stats.py --index ./photo_index.db --what-if --report savings.html
+```
+
 ### EXIF Editing
 
 ```bash
@@ -589,8 +664,12 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `cluster_events.py` | Auto-group photos into events by time+location | `.db` index | `.json` / `.csv` report |
 | `find_similar_videos.py` | Video dedup via frame sampling + pHash | `.db` index | `.csv` report |
 | `rename_photos.py` | Smart rename by EXIF date/camera/location | `.db` index | Renamed files + undo record |
+| `detect_corrupted.py` | Find broken/truncated images and unplayable videos | `.db` index | DB columns + `.csv` report |
+| `fix_dates.py` | Fix missing EXIF dates from filename/neighbors/mtime | `.db` index | DB columns + `.csv` report |
+| `verify_backup.py` | Verify backup completeness (quick or SHA-256 full) | Source + backup dirs | `.csv` report + coverage % |
+| `find_duplicate_folders.py` | Find duplicate/similar folders by content hash | `.db` index or directory | `.csv` report |
 | `generate_album_report.py` | HTML album organization report (before/after diff) | `.db` index + stats | `album_report.html` |
-| `library_stats.py` | Library health & insights (read-only, **location breakdown**) | `.db` index | terminal / JSON / `health.html` |
+| `library_stats.py` | Library health & insights + **space what-if analysis** | `.db` index | terminal / JSON / `health.html` |
 | `reverse_geocode.py` | GPS → place names (city/region/country) | Lat/lon coordinates | Place name text |
 | `edit_exif.py` | EXIF editing: strip GPS, set dates, write tags | Index DB or file paths | Modified files + log |
 | `photo_metadata.py` · `constants.py` · `applescript_utils.py` | Shared internal modules (hashing/EXIF, constants, AppleScript) | — | — |

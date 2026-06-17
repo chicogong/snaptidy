@@ -1099,6 +1099,57 @@ def detect_external_drives() -> list:
 # Album helpers
 # ---------------------------------------------------------------------------
 
+def _create_event_albums(events: list, index_db: str) -> int:
+    """Create Photos.app albums from event clustering results.
+
+    Returns number of albums created.
+    """
+    created = 0
+    conn = sqlite3.connect(index_db)
+
+    for event in events:
+        event_name = event.get("name", f"Event {event.get('id', created + 1)}")
+        event_id = event.get("id", "")
+        photo_ids = event.get("photo_ids", event.get("files", []))
+
+        if not photo_ids:
+            continue
+
+        # Get file paths for this event
+        if isinstance(photo_ids[0], str) and os.path.isabs(photo_ids[0]):
+            paths = photo_ids
+        else:
+            # Get from DB by event_id
+            rows = conn.execute(
+                "SELECT file_path FROM photos WHERE event_id=?", (str(event_id),)
+            ).fetchall()
+            paths = [r[0] for r in rows]
+
+        if not paths:
+            continue
+
+        # Create album via osascript
+        try:
+            from applescript_utils import create_album_and_add
+            album_name = f"📅 {event_name}"
+            create_album_and_add(album_name, paths)
+            created += 1
+        except ImportError:
+            # Fallback: use osascript directly
+            try:
+                # Create album
+                subprocess.run([
+                    "osascript", "-e",
+                    f'tell application "Photos" to make new album named "{event_name}"'
+                ], capture_output=True, timeout=30)
+                created += 1
+            except Exception:
+                pass
+
+    conn.close()
+    return created
+
+
 def _list_albums(index_db: str) -> None:
     """List available albums and their photo counts from the scan index."""
     print()
@@ -1260,6 +1311,18 @@ def main() -> None:
                         help="Smart rename photos by EXIF metadata")
     parser.add_argument("--rename-template", default="{date}_{camera}_{seq}",
                         help="Rename template for --smart-rename (default: {date}_{camera}_{seq})")
+    parser.add_argument("--create-event-albums", action="store_true",
+                        help="Create Photos.app albums from detected events (requires --cluster-events)")
+    parser.add_argument("--detect-corrupted", action="store_true",
+                        help="Detect corrupted/broken images and videos")
+    parser.add_argument("--fix-dates", action="store_true",
+                        help="Fix missing dates from filename/neighbors/mtime")
+    parser.add_argument("--fix-dates-strategy", choices=["all", "filename-only", "neighbors", "mtime"],
+                        default="all", help="Date fix strategy (default: all)")
+    parser.add_argument("--verify-backup", default="",
+                        help="Verify backup completeness against this directory")
+    parser.add_argument("--find-duplicate-folders", action="store_true",
+                        help="Find duplicate/similar folders based on file content")
     args = parser.parse_args()
 
     # Auto-detect source type
@@ -1361,7 +1424,7 @@ def main() -> None:
     total_enhancements = sum([
         args.assess_quality, args.detect_live_photos, args.generate_timeline,
         args.cluster_events, args.find_orphan_raw, args.find_similar_videos,
-        args.smart_rename,
+        args.smart_rename, args.detect_corrupted, args.fix_dates,
     ])
 
     if total_enhancements > 0:
@@ -1519,6 +1582,59 @@ def main() -> None:
         except Exception as e:
             print(f"     ⚠️  Timeline generation failed: {e}")
         enhancement_step += 1
+
+    # Corrupted File Detection
+    if args.detect_corrupted:
+        print(f"\n  💥 Enhancement {enhancement_step}/{total_enhancements}: Corrupted File Detection...")
+        try:
+            from detect_corrupted import main as detect_corrupted_main
+            detect_corrupted_main()
+        except (ImportError, SystemExit):
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "detect_corrupted.py"),
+                 "--index", index_db, "--parallel", "4"],
+                capture_output=True, text=True, timeout=600,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Corrupted file detection failed: {e}")
+        enhancement_step += 1
+
+    # Fix Dates
+    if args.fix_dates:
+        print(f"\n  📅 Enhancement {enhancement_step}/{total_enhancements}: Fix Missing Dates...")
+        fix_dates_report = os.path.abspath(os.path.join(report_dir, "fixed_dates.csv"))
+        try:
+            from fix_dates import fix_dates as run_fix_dates
+            stats = run_fix_dates(index_db, strategy=args.fix_dates_strategy, dry_run=False,
+                                  report_path=fix_dates_report)
+            print(f"     Fixed {stats['fixed']}/{stats['total']} photos")
+        except ImportError:
+            result = subprocess.run(
+                [sys.executable, os.path.join(os.path.dirname(__file__), "fix_dates.py"),
+                 "--index", index_db, "--strategy", args.fix_dates_strategy,
+                 "--report", fix_dates_report],
+                capture_output=True, text=True, timeout=600,
+            )
+            print(f"     {result.stdout.strip()}")
+        except Exception as e:
+            print(f"     ⚠️  Date fix failed: {e}")
+        enhancement_step += 1
+
+    # Event Album Creation (requires cluster_events first)
+    if args.create_event_albums and args.cluster_events:
+        print(f"\n  📋 Creating event albums in Photos.app...")
+        events_path = os.path.join(report_dir, "events.json")
+        if os.path.exists(events_path):
+            try:
+                with open(events_path, "r", encoding="utf-8") as f:
+                    events = json.load(f)
+                created = _create_event_albums(events, index_db)
+                print(f"     Created {created} event albums in Photos.app")
+            except Exception as e:
+                print(f"     ⚠️  Event album creation failed: {e}")
+        else:
+            print(f"     ⚠️  No events.json found — run --cluster-events first")
 
     if total_enhancements > 0:
         print()

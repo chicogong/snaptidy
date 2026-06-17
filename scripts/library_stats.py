@@ -310,6 +310,197 @@ td{{padding:8px 4px;border-bottom:1px solid #f0f0f2}}
 </div></body></html>"""
 
 
+def collect_whatif(index_path: str) -> dict:
+    """Collect space savings what-if analysis.
+
+    For each removable category, calculate how much space would be saved
+    if those files were removed.
+    """
+    conn = sqlite3.connect(index_path)
+    conn.row_factory = sqlite3.Row
+    cols = _table_columns(conn)
+
+    rows = list(conn.execute("SELECT * FROM photos"))
+    conn.close()
+
+    total_bytes = 0
+    categories = defaultdict(lambda: {"count": 0, "bytes": 0})
+
+    # Define what-if scenarios
+    scenarios = {
+        "screenshots": {"count": 0, "bytes": 0, "label": "截图 Screenshots"},
+        "duplicates": {"count": 0, "bytes": 0, "label": "重复照片 Duplicates"},
+        "raw_files": {"count": 0, "bytes": 0, "label": "RAW 文件 RAW files"},
+        "low_quality": {"count": 0, "bytes": 0, "label": "低质量照片 Low quality"},
+        "videos": {"count": 0, "bytes": 0, "label": "视频 Videos"},
+        "no_date": {"count": 0, "bytes": 0, "label": "无日期 No date"},
+        "corrupted": {"count": 0, "bytes": 0, "label": "损坏文件 Corrupted"},
+        "with_gps": {"count": 0, "bytes": 0, "label": "含 GPS With GPS (privacy)"},
+    }
+
+    # Track which files are in duplicate groups (from move plan or duplicates CSV)
+    dup_paths = set()
+
+    for r in rows:
+        d = dict(r)
+        size = d.get("size_bytes") or 0
+        total_bytes += size
+
+        # Screenshots
+        if d.get("category") == "screenshot" or ("photos_screenshot" in cols and d.get("photos_screenshot")):
+            scenarios["screenshots"]["count"] += 1
+            scenarios["screenshots"]["bytes"] += size
+
+        # Videos
+        if d.get("media_type") == "video" or d.get("category") == "video":
+            scenarios["videos"]["count"] += 1
+            scenarios["videos"]["bytes"] += size
+
+        # RAW files
+        fmt = (d.get("format_family") or "").lower()
+        if fmt == "raw":
+            scenarios["raw_files"]["count"] += 1
+            scenarios["raw_files"]["bytes"] += size
+
+        # Low quality (quality_score < 30)
+        qs = d.get("quality_score")
+        if qs is not None:
+            try:
+                if int(qs) < 30 and int(qs) >= 0:
+                    scenarios["low_quality"]["count"] += 1
+                    scenarios["low_quality"]["bytes"] += size
+            except (ValueError, TypeError):
+                pass
+
+        # No date
+        exif_dt = d.get("exif_datetime") or d.get("file_mtime") or ""
+        if not exif_dt or len(exif_dt) < 10:
+            scenarios["no_date"]["count"] += 1
+            scenarios["no_date"]["bytes"] += size
+
+        # Corrupted
+        if "is_corrupted" in cols and d.get("is_corrupted"):
+            scenarios["corrupted"]["count"] += 1
+            scenarios["corrupted"]["bytes"] += size
+
+        # With GPS
+        if d.get("gps_latitude") not in (None, "", 0):
+            scenarios["with_gps"]["count"] += 1
+            scenarios["with_gps"]["bytes"] += size
+
+    # Duplicates — estimate from duplicate files detected
+    # Check if duplicates CSV exists alongside the DB
+    db_dir = os.path.dirname(os.path.abspath(index_path))
+    for dup_name in ("duplicates.csv", "similar_groups.csv"):
+        dup_path = os.path.join(db_dir, dup_name)
+        if os.path.exists(dup_path):
+            import csv as csv_mod
+            with open(dup_path, "r", encoding="utf-8-sig") as f:
+                reader = csv_mod.DictReader(f)
+                for row in reader:
+                    fp = row.get("file_path", row.get("path", ""))
+                    if fp and fp not in dup_paths:
+                        dup_paths.add(fp)
+            break
+
+    # If no CSV, estimate duplicates from duplicate_group column
+    if not dup_paths and "duplicate_group" in cols:
+        group_sizes = defaultdict(int)
+        for r in rows:
+            d = dict(r)
+            dg = d.get("duplicate_group")
+            if dg:
+                group_sizes[dg] += 1
+        # In each group, only 1 is kept, rest are duplicates
+        dup_count = sum(v - 1 for v in group_sizes.values() if v > 1)
+        # Estimate average size
+        avg_size = total_bytes / len(rows) if rows else 0
+        scenarios["duplicates"]["count"] = dup_count
+        scenarios["duplicates"]["bytes"] = int(dup_count * avg_size)
+
+    return {
+        "total_files": len(rows),
+        "total_bytes": total_bytes,
+        "total_size_human": format_size(total_bytes),
+        "scenarios": scenarios,
+    }
+
+
+def print_whatif(whatif: dict) -> None:
+    """Print what-if analysis to terminal."""
+    print("=" * 60)
+    print("  SnapTidy — Space What-If Analysis")
+    print("=" * 60)
+
+    total_bytes = whatif["total_bytes"]
+    print(f"\n  📦 Total: {whatif['total_files']:,} files, {whatif['total_size_human']}")
+    print(f"\n  💡 如果删除以下文件，能省多少空间？\n")
+
+    # Sort by bytes descending
+    sorted_scenarios = sorted(
+        whatif["scenarios"].items(),
+        key=lambda x: x[1]["bytes"],
+        reverse=True,
+    )
+
+    for key, data in sorted_scenarios:
+        if data["count"] == 0:
+            continue
+        pct = data["bytes"] / total_bytes * 100 if total_bytes else 0
+        bar = _bar(int(pct), 100, 20)
+        print(f"  {data['label']:30s} {_bar(data['bytes'], total_bytes, 20)} "
+              f"{data['count']:>5} files  {format_size(data['bytes']):>10}  ({pct:.1f}%)")
+
+    print()
+
+
+def build_whatif_html(whatif: dict, base_stats: dict) -> str:
+    """Build what-if analysis HTML section."""
+    import html as _html
+
+    def esc(s):
+        return _html.escape(str(s))
+
+    total_bytes = whatif["total_bytes"]
+    total_files = whatif["total_files"]
+
+    rows_html = ""
+    sorted_scenarios = sorted(
+        whatif["scenarios"].items(),
+        key=lambda x: x[1]["bytes"],
+        reverse=True,
+    )
+
+    for key, data in sorted_scenarios:
+        if data["count"] == 0:
+            continue
+        pct = data["bytes"] / total_bytes * 100 if total_bytes else 0
+        rows_html += f"""
+        <tr>
+            <td>{esc(data['label'])}</td>
+            <td style="text-align:right">{data['count']:,}</td>
+            <td style="text-align:right">{esc(format_size(data['bytes']))}</td>
+            <td style="text-align:right">{pct:.1f}%</td>
+            <td><div style="background:#f0f0f2;border-radius:4px;height:16px;overflow:hidden">
+                <div style="background:#FF9500;width:{pct:.1f}%;height:100%;border-radius:4px"></div>
+            </div></td>
+        </tr>"""
+
+    return f"""
+    <div class="card">
+        <h2>💡 假设分析 What-If Analysis</h2>
+        <p style="color:#86868b;font-size:13px;margin-bottom:16px">
+            如果删除以下类别的文件，能节省多少空间？
+        </p>
+        <table>
+            <thead><tr><th>类别</th><th style="text-align:right">文件数</th>
+            <th style="text-align:right">可省空间</th><th style="text-align:right">占比</th>
+            <th style="width:120px"></th></tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+    </div>"""
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Library health & insights (read-only) over a scanned index")
@@ -319,6 +510,8 @@ def main() -> None:
                         help="Optional HTML report output path")
     parser.add_argument("--format", choices=["terminal", "json"], default="terminal",
                         help="Console output format (default: terminal)")
+    parser.add_argument("--what-if", action="store_true",
+                        help="Show space savings what-if analysis")
     args = parser.parse_args()
 
     if not os.path.exists(args.index):
@@ -327,17 +520,38 @@ def main() -> None:
 
     stats = collect_stats(args.index)
 
-    if args.format == "json":
-        print(json.dumps(stats, ensure_ascii=False, indent=2))
-    else:
-        print_terminal(stats)
+    if args.what_if:
+        whatif = collect_whatif(args.index)
+        if args.format == "json":
+            stats["what_if"] = whatif
+            print(json.dumps(stats, ensure_ascii=False, indent=2))
+        else:
+            print_terminal(stats)
+            print_whatif(whatif)
 
-    if args.report:
-        report_path = os.path.abspath(args.report)
-        os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
-        with open(report_path, "w", encoding="utf-8") as fh:
-            fh.write(build_html(stats))
-        print(f"  📄 HTML report: {report_path}")
+        if args.report:
+            report_path = os.path.abspath(args.report)
+            os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
+            base_html = build_html(stats)
+            whatif_section = build_whatif_html(whatif, stats)
+            # Insert what-if section before closing </div></body>
+            full_html = base_html.replace("</div></body></html>",
+                                          f"{whatif_section}\n</div></body></html>")
+            with open(report_path, "w", encoding="utf-8") as fh:
+                fh.write(full_html)
+            print(f"  📄 HTML report (with what-if): {report_path}")
+    else:
+        if args.format == "json":
+            print(json.dumps(stats, ensure_ascii=False, indent=2))
+        else:
+            print_terminal(stats)
+
+        if args.report:
+            report_path = os.path.abspath(args.report)
+            os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
+            with open(report_path, "w", encoding="utf-8") as fh:
+                fh.write(build_html(stats))
+            print(f"  📄 HTML report: {report_path}")
 
 
 if __name__ == "__main__":

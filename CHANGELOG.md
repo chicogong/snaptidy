@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] - 2026-06-17
+
+### Added
+
+- **Corrupted image/video detection** (`detect_corrupted.py`) — find broken,
+  truncated, 0-byte images and unplayable videos using layered Pillow
+  verify+load and ffmpeg probe; parallel processing; writes `is_corrupted`,
+  `corruption_type`, `corruption_detail` to DB
+- **Photo date correction** (`fix_dates.py`) — fix missing/wrong EXIF dates
+  by inferring from filename patterns (15+ patterns including iOS, Android,
+  WeChat, WhatsApp, Signal, KakaoTalk, LINE), neighbor photos in same folder,
+  and file mtime fallback; `--dry-run`, `--write-exif`, `--strategy` flags
+- **Backup verification** (`verify_backup.py`) — verify photo backup
+  completeness; quick mode (filename+size) and full mode (SHA-256, catches
+  renames); reports missing/extra/changed files with coverage percentage
+- **Duplicate folder detection** (`find_duplicate_folders.py`) — find folders
+  that are complete or near-complete duplicates; Jaccard similarity;
+  content-hash-based grouping; union-find for near-duplicate clusters (≥90%)
+- **Space what-if analysis** (`library_stats.py --what-if`) — calculate space
+  savings by category: "if I delete all screenshots/duplicates/RAW/low-quality/
+  videos/corrupted files, how much space would I save?"
+- **Event album auto-creation** (`organize_photos.py --create-event-albums`) —
+  create Photos.app albums from `cluster_events.py` event groups
+
+### Integration
+
+- `organize_photos.py` gains `--detect-corrupted`, `--fix-dates`,
+  `--fix-dates-strategy`, `--create-event-albums`, `--verify-backup`,
+  `--find-duplicate-folders` flags
+- `fix_dates.py` supports ISO 8601 date format with T separator
+  (from Photos.app library scans)
+
 ## [3.9.0] - 2026-06-17
 
 ### Added

@@ -1,9 +1,9 @@
 ---
 name: snaptidy
-version: 3.9.0
+version: 3.10.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags), interactive review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album/best quality), quality assessment (blur/brightness/contrast → 0-100 score integrated with dedup), Live Photo detection (keep pairs together during dedup), orphan RAW cleanup, interactive timeline viewer, Photos.app vs file-system library compare, Google Takeout import with metadata merge, GPX geotagging, event clustering by time+location, video dedup via frame sampling+pHash, smart rename by EXIF date/camera/location templates.
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit", "照片审核", "photo review", "review duplicates", "审核重复", "照片质量", "photo quality", "quality assessment", "Live Photo", "orphan RAW", "timeline", "照片时间线", "library compare", "Google Takeout", "GPX geotag", "event clustering", "照片事件", "video dedup", "视频去重", "smart rename", "照片重命名"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags), interactive review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album/best quality), quality assessment (blur/brightness/contrast → 0-100 score integrated with dedup), Live Photo detection (keep pairs together during dedup), orphan RAW cleanup, interactive timeline viewer, Photos.app vs file-system library compare, Google Takeout import with metadata merge, GPX geotagging, event clustering by time+location, video dedup via frame sampling+pHash, smart rename by EXIF date/camera/location templates, corrupted image/video detection (layered Pillow verify+load, ffmpeg probe), photo date correction from filename/neighbors/mtime, backup verification (quick or SHA-256 full), duplicate folder detection (Jaccard similarity), space what-if analysis.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit", "照片审核", "photo review", "review duplicates", "审核重复", "照片质量", "photo quality", "quality assessment", "Live Photo", "orphan RAW", "timeline", "照片时间线", "library compare", "Google Takeout", "GPX geotag", "event clustering", "照片事件", "video dedup", "视频去重", "smart rename", "照片重命名", "corrupted photo", "损坏图片", "fix date", "修正日期", "backup verify", "备份验证", "duplicate folder", "重复文件夹", "what if", "空间分析"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -26,9 +26,9 @@ metadata:
 
 ## When to Use
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**, **interactive review page with smart strategy rules**, **quality assessment (blur/brightness/contrast → dedup integration)**, **Live Photo detection (keep pairs together)**, **orphan RAW cleanup**, **interactive timeline viewer**, **Photos.app vs file-system compare**, **Google Takeout import**, **GPX geotagging**, **event clustering**, **video dedup**, **smart rename**.
+Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**, **interactive review page with smart strategy rules**, **quality assessment (blur/brightness/contrast → dedup integration)**, **Live Photo detection (keep pairs together)**, **orphan RAW cleanup**, **interactive timeline viewer**, **Photos.app vs file-system compare**, **Google Takeout import**, **GPX geotagging**, **event clustering**, **video dedup**, **smart rename**, **corrupted image/video detection**, **photo date correction from filename/neighbors/mtime**, **backup verification**, **duplicate folder detection**, **space what-if analysis**.
 
-**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑 · 照片质量 · Live Photo · 时间线 · 视频去重 · 照片重命名 · 照片事件
+**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑 · 照片质量 · Live Photo · 时间线 · 视频去重 · 照片重命名 · 照片事件 · 损坏图片 · 修正日期 · 备份验证 · 重复文件夹 · 空间分析
 
 ## Safety Rules — MANDATORY
 
@@ -122,6 +122,40 @@ python3 scripts/generate_move_plan.py --duplicates dup.csv --index index.db \
 | `cluster_events.py` | "event clustering", "照片事件" | Auto-group photos by time + location |
 | `find_similar_videos.py` | "video dedup", "视频去重" | Frame sampling + pHash for video duplicates |
 | `rename_photos.py` | "smart rename", "照片重命名" | Rename by EXIF date/camera/location: `{date}_{camera}_{seq}` |
+
+## v3.10 New Features
+
+| Script | Trigger | What it does |
+|--------|---------|-------------|
+| `detect_corrupted.py` | "corrupted photo", "损坏图片" | Find broken/truncated images, unplayable videos; layered Pillow verify+load, ffmpeg probe; parallel |
+| `fix_dates.py` | "fix date", "修正日期" | Fix missing EXIF dates from filename (15+ patterns), neighbor photos, file mtime; supports --dry-run, --write-exif |
+| `verify_backup.py` | "backup verify", "备份验证" | Verify backup completeness; quick (filename+size) or full (SHA-256); coverage % |
+| `find_duplicate_folders.py` | "duplicate folder", "重复文件夹" | Find similar folders by Jaccard content similarity; near-duplicate grouping |
+| `library_stats.py --what-if` | "what if", "空间分析" | "How much space would I save if I delete screenshots/duplicates/RAW?" |
+| `--create-event-albums` | "event album" | Create Photos.app albums from cluster_events.py results |
+
+```bash
+# Detect corrupted files
+python3 scripts/detect_corrupted.py --index photo_index.db --report corrupted.csv
+
+# Fix missing dates (dry-run first)
+python3 scripts/fix_dates.py --index photo_index.db --dry-run
+python3 scripts/fix_dates.py --index photo_index.db --write-exif --report fixed.csv
+
+# Verify backup completeness
+python3 scripts/verify_backup.py --source ~/Photos --backup /Volumes/Backup/Photos --full
+
+# Find duplicate folders
+python3 scripts/find_duplicate_folders.py --index photo_index.db
+
+# Space what-if analysis
+python3 scripts/library_stats.py --index photo_index.db --what-if
+
+# Full pipeline with all v3.10 enhancements
+python3 scripts/organize_photos.py --source ~/Pictures/Export \
+  --assess-quality --detect-live-photos --detect-corrupted --fix-dates \
+  --cluster-events --create-event-albums --strategy quality --dry-run
+```
 
 ```bash
 # Quality assessment → feeds into dedup scoring

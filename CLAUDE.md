@@ -93,9 +93,25 @@ python3 scripts/compare_libraries.py --library ~/Pictures/Photos\ Library.photos
 
 # 17. Import Google Takeout
 python3 scripts/import_google_takeout.py --source ~/Downloads/takeout --output ./takeout_index.db
+
+# 18. Detect corrupted images/videos
+python3 scripts/detect_corrupted.py --index ./photo_index.db --report corrupted.csv
+
+# 19. Fix missing EXIF dates
+python3 scripts/fix_dates.py --index ./photo_index.db --dry-run
+python3 scripts/fix_dates.py --index ./photo_index.db --write-exif --report fixed.csv
+
+# 20. Verify backup completeness
+python3 scripts/verify_backup.py --source ~/Photos --backup /Volumes/Backup/Photos --full
+
+# 21. Find duplicate folders
+python3 scripts/find_duplicate_folders.py --index ./photo_index.db
+
+# 22. Space what-if analysis
+python3 scripts/library_stats.py --index ./photo_index.db --what-if
 ```
 
-### Option B: Full pipeline with v3.9 enhancements
+### Option B: Full pipeline with v3.10 enhancements
 
 ```bash
 # Scan + quality + Live Photo + events + timeline in one command
@@ -103,11 +119,11 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export \
   --assess-quality --detect-live-photos --cluster-events \
   --generate-timeline --strategy quality --dry-run
 
-# All enhancements enabled
+# All v3.10 enhancements enabled
 python3 scripts/organize_photos.py --source ~/Pictures/Export \
-  --assess-quality --detect-live-photos --cluster-events \
+  --assess-quality --detect-live-photos --cluster-events --create-event-albums \
   --generate-timeline --find-orphan-raw --smart-rename \
-  --strategy quality --dry-run
+  --detect-corrupted --fix-dates --strategy quality --dry-run
 ```
 
 ### Option C: One-command interactive workflow

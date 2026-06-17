@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.9-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.10-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
 
@@ -36,6 +36,17 @@
 **iPhone 用户**：整理照片不需要 iCloud 同步到电脑。通过 USB 连接 iPhone，SnapTidy 可以直接扫描 Photos.app 图库，或者先用 Finder 将照片同步到本地文件夹。使用 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 等工具还可以直接通过 USB 访问 iPhone 的 DCIM 目录，无需 iCloud。
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
+
+## v3.10 新功能
+
+| 功能 | 说明 |
+|------|------|
+| 💥 **损坏文件检测** | `detect_corrupted.py` — 检测损坏/截断的图片和无法播放的视频；Pillow 多层验证 + ffmpeg 探测；并行处理 |
+| 📅 **照片日期修正** | `fix_dates.py` — 从文件名模式（15+ 种）、相邻照片、文件修改时间推断并修复缺失的 EXIF 日期 |
+| 🔄 **备份验证** | `verify_backup.py` — 验证备份完整性；快速模式（文件名+大小）和完整模式（SHA-256，识别重命名）；覆盖率报告 |
+| 📂 **重复文件夹检测** | `find_duplicate_folders.py` — 按内容哈希找出完全或高度相似的文件夹；Jaccard 相似度 |
+| 💡 **空间假设分析** | `library_stats.py --what-if` — "如果删除所有截图/重复/RAW/低质量文件能省多少空间？" |
+| 📋 **事件相册创建** | `organize_photos.py --create-event-albums` — 从事件聚类结果自动创建 Photos.app 相册 |
 
 ## v3.9 新功能
 

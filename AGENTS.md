@@ -330,3 +330,53 @@ All v3.9 features are available as enhancement flags that run after scan but bef
 | `--find-similar-videos` | find_similar_videos.py | Video dedup via frame sampling |
 | `--smart-rename` | rename_photos.py | Rename by EXIF template (dry-run) |
 | `--rename-template T` | rename_photos.py | Template string (default: {date}_{camera}_{seq}) |
+
+## v3.10 New Features
+
+### Corrupted File Detection (detect_corrupted.py)
+
+Layered integrity check for images and videos:
+1. **0-byte/missing check** — instant
+2. **Pillow verify()** — structural check (fast, ~100x faster than load)
+3. **Pillow load()** — full decode (catches truncated images that pass verify)
+4. **ffmpeg probe** — video playability check (30s timeout per file)
+
+DB columns: `is_corrupted` (INTEGER), `corruption_type` (TEXT), `corruption_detail` (TEXT)
+
+ThreadPoolExecutor for parallel processing. `--incremental` skips already-verified files.
+
+### Photo Date Correction (fix_dates.py)
+
+Three strategies for fixing missing/wrong EXIF dates:
+1. **Filename extraction** — 15+ regex patterns (iOS IMG_, Android Screenshot_, WeChat WX/mmexport/microMsg, WhatsApp IMG-...-WA, Facebook FB_IMG, Signal, LINE, KakaoTalk, Unix timestamps, generic YYYYMMDD_HHMMSS)
+2. **Neighbor inference** — photos in same folder with valid dates, sorted by filename order
+3. **File mtime fallback** — last resort when no other source available
+
+Writes to EXIF DateTimeOriginal and DateTimeDigitized via piexif (JPEG/TIFF) or exiftool (HEIC/RAW).
+
+`--strategy` flag: `all` (default), `filename-only`, `neighbors`, `mtime`
+
+### Backup Verification (verify_backup.py)
+
+Quick mode (filename + size matching) vs Full mode (SHA-256 hash matching, catches renames).
+
+Can use existing index DB or scan directories on-the-fly. Reports: missing files, extra files, changed files, coverage percentage.
+
+### Duplicate Folder Detection (find_duplicate_folders.py)
+
+Builds folder → file hash set mapping, computes Jaccard similarity between folder pairs. Optimized with reverse hash index to only compare folders sharing at least one file. Union-find groups near-duplicate folders (≥90% similarity).
+
+### Space What-If Analysis (library_stats.py --what-if)
+
+Categories: screenshots, duplicates, RAW files, low quality (quality_score < 30), videos, no-date, corrupted, with-GPS (privacy). Shows file count + bytes + percentage for each category.
+
+### v3.10 Enhancement Flags (organize_photos.py)
+
+| Flag | Script | Effect |
+|------|--------|--------|
+| `--detect-corrupted` | detect_corrupted.py | Find broken/truncated images and unplayable videos |
+| `--fix-dates` | fix_dates.py | Fix missing EXIF dates |
+| `--fix-dates-strategy` | fix_dates.py | Strategy: all/filename-only/neighbors/mtime |
+| `--create-event-albums` | organize_photos.py | Create Photos.app albums from events |
+| `--verify-backup DIR` | verify_backup.py | Verify backup against directory |
+| `--find-duplicate-folders` | find_duplicate_folders.py | Find duplicate/similar folders |
