@@ -37,14 +37,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 
-from constants import RAW_EXTS
-
-
-# JPEG extensions
-JPEG_EXTS = {"jpg", "jpeg"}
-
-# HEIC can also be a RAW+JPEG pair companion
-HEIC_EXTS = {"heic", "heif"}
+from constants import RAW_EXTS, JPEG_EXTS, HEIC_EXTS
 
 
 def find_orphans(index_path: str, find_raw: bool = True, find_jpeg: bool = False) -> dict:

@@ -26,6 +26,11 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
+from constants import JPEG_EXTS, HEIC_EXTS
+
+# piexif can write EXIF to JPEG and TIFF formats (dot-prefixed for suffix comparison)
+PIEXIF_WRITABLE_EXTS = {f".{e}" for e in JPEG_EXTS | {"tif", "tiff"}}
+
 # ---------------------------------------------------------------------------
 # Filename date extraction patterns
 # ---------------------------------------------------------------------------
@@ -193,7 +198,7 @@ def write_exif_date(file_path: str, dt: datetime, dry_run: bool = False) -> bool
     ext = Path(file_path).suffix.lower()
 
     # Try piexif for JPEG/TIFF
-    if ext in (".jpg", ".jpeg", ".tiff", ".tif"):
+    if ext in PIEXIF_WRITABLE_EXTS:
         try:
             import piexif
             date_str = dt.strftime("%Y:%m:%d %H:%M:%S")

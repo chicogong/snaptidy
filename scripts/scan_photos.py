@@ -35,6 +35,8 @@ import json
 import os
 import sqlite3
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 # Shared metadata helpers + optional-dependency flags (single source of truth)
@@ -44,7 +46,7 @@ from photo_metadata import (
     has_exif_data, compute_phash, get_image_size, get_subsec_time,
     compute_aspect_ratio,
 )
-from constants import IMAGE_EXTS, VIDEO_EXTS, get_format_family
+from constants import IMAGE_EXTS, VIDEO_EXTS, RAW_EXTS, HEIC_EXTS, get_format_family
 from reverse_geocode import reverse_geocode, init_cache as geo_init_cache, flush_cache as geo_flush_cache
 
 # Skip patterns for directories
@@ -141,7 +143,7 @@ def detect_category(name: str, ext: str) -> str:
             return "wechat"
 
     # RAW photo
-    if ext in ("dng", "cr2", "nef", "arw"):
+    if ext in RAW_EXTS:
         return "photo"
 
     # Video
@@ -313,12 +315,17 @@ def _insert_entry(conn, entry):
 
 
 def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
-                    geocode: bool = True) -> None:
+                    geocode: bool = True, parallel: int = 1,
+                    incremental: bool = False) -> None:
     """Walk through input_dir and write metadata to SQLite DB or CSV.
 
-    For SQLite mode, entries are written and committed one-by-one so that
-    a crash at any point never loses already-computed data.  Re-running
-    the scan safely picks up where it left off (INSERT OR REPLACE).
+    For SQLite mode, entries are written and committed one-by-one (serial)
+    or in batches after parallel computation, so that a crash at any point
+    never loses already-computed data.  Re-running the scan safely picks
+    up where it left off (INSERT OR REPLACE).
+
+    If incremental=True, only process files that are new or modified since
+    the last scan (compared by file_path + size_bytes + file_mtime).
     """
     input_dir = os.path.abspath(input_dir)
 
@@ -348,55 +355,113 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
         print("No photo/video files found.")
         return
 
+    # --- Incremental scan: load existing index for change detection ---
+    existing_index = {}  # file_path → (size_bytes, file_mtime)
+    if incremental and use_db and os.path.exists(output_path):
+        try:
+            old_conn = sqlite3.connect(output_path)
+            old_conn.row_factory = sqlite3.Row
+            for row in old_conn.execute(
+                "SELECT file_path, size_bytes, file_mtime FROM photos WHERE scan_root = ?",
+                (input_dir,)
+            ):
+                existing_index[row["file_path"]] = (
+                    row["size_bytes"] or 0,
+                    row["file_mtime"] or "",
+                )
+            old_conn.close()
+        except Exception:
+            existing_index = {}
+
+    skipped_unchanged = 0
+
     if use_db:
-        # --- SQLite streaming mode: insert + commit each entry immediately ---
+        # --- SQLite streaming mode ---
         conn = init_db(output_path)
-        # Delete previous scan results for this root first
-        conn.execute("DELETE FROM photos WHERE scan_root = ?", (input_dir,))
-        conn.commit()
+        if not incremental:
+            # Full scan: delete previous scan results for this root first
+            conn.execute("DELETE FROM photos WHERE scan_root = ?", (input_dir,))
+            conn.commit()
 
-        last_pct = -1
-        for idx, (root, name, ext) in enumerate(file_list):
-            # Progress indicator — update every 5%
-            pct = idx * 100 // total_files
-            if pct >= last_pct + 5 or idx == 0:
-                print(f"  Scanning... {idx}/{total_files} ({pct}%)")
-                last_pct = pct
-
+        # Filter valid files (stat check) before parallel processing
+        valid_files = []
+        for root, name, ext in file_list:
             full_path = os.path.join(root, name)
             try:
                 lstat = os.lstat(full_path)
-            except OSError:
-                continue
-
-            # Skip symbolic links (avoid infinite loops and double-counting)
-            if os.path.islink(full_path):
-                continue
-
-            try:
+                if os.path.islink(full_path):
+                    continue
                 stat = os.stat(full_path)
+                if stat.st_size == 0:
+                    continue
+                # Incremental: skip unchanged files
+                if incremental and full_path in existing_index:
+                    old_size, old_mtime = existing_index[full_path]
+                    cur_mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    if stat.st_size == old_size and cur_mtime == old_mtime:
+                        skipped_unchanged += 1
+                        continue
+                valid_files.append((full_path, name, ext, stat))
             except OSError:
                 continue
 
-            size_bytes = stat.st_size
-            # Skip zero-byte files (empty placeholders or iCloud stubs)
-            if size_bytes == 0:
-                continue
+        if parallel <= 1:
+            # Sequential mode — commit each entry for zero data loss
+            last_pct = -1
+            for idx, (full_path, name, ext, stat) in enumerate(valid_files):
+                pct = idx * 100 // len(valid_files)
+                if pct >= last_pct + 5 or idx == 0:
+                    print(f"  Scanning... {idx}/{len(valid_files)} ({pct}%)")
+                    last_pct = pct
 
-            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
-            _insert_entry(conn, entry)
-            conn.commit()  # Commit every entry — zero data loss on crash
+                entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
+                _insert_entry(conn, entry)
+                conn.commit()  # Commit every entry — zero data loss on crash
 
-            cat = entry["category"]
-            categories[cat] = categories.get(cat, 0) + 1
-            if entry["extension"] in ("heic", "heif"):
-                heic_count += 1
+                cat = entry["category"]
+                categories[cat] = categories.get(cat, 0) + 1
+                if entry["extension"] in HEIC_EXTS:
+                    heic_count += 1
+        else:
+            # Parallel mode — compute entries in threads, batch-write
+            print(f"  Using {parallel} parallel workers...")
+            last_pct = -1
+            done_count = 0
+            with ThreadPoolExecutor(max_workers=parallel) as executor:
+                future_to_file = {
+                    executor.submit(_compute_entry, fp, name, ext, stat, input_dir, scan_time, geocode=geocode): (fp, name, ext)
+                    for fp, name, ext, stat in valid_files
+                }
+                for future in as_completed(future_to_file):
+                    done_count += 1
+                    pct = done_count * 100 // len(valid_files)
+                    if pct >= last_pct + 5 or done_count == 1:
+                        print(f"  Scanning... {done_count}/{len(valid_files)} ({pct}%)")
+                        last_pct = pct
+
+                    try:
+                        entry = future.result()
+                        _insert_entry(conn, entry)
+                        # Batch commit every 50 entries (balance speed vs. crash safety)
+                        if done_count % 50 == 0:
+                            conn.commit()
+
+                        cat = entry["category"]
+                        categories[cat] = categories.get(cat, 0) + 1
+                        if entry["extension"] in HEIC_EXTS:
+                            heic_count += 1
+                    except Exception:
+                        pass
+
+            conn.commit()  # Final commit
 
         conn.close()
 
         # Stats
         total = sum(categories.values())
         print(f"Index written to SQLite: {output_path}")
+        if incremental and skipped_unchanged > 0:
+            print(f"  Incremental: {skipped_unchanged} unchanged, {total} new/modified")
         print(f"  Total: {total} files")
         for cat, count in sorted(categories.items(), key=lambda x: -x[1]):
             print(f"  {cat}: {count}")
@@ -404,35 +469,64 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
             print(f"  ⚠️  {heic_count} HEIC/HEIF files found — install pillow-heif for full support:")
             print(f"      pip install pillow-heif")
     else:
-        # --- CSV mode: still needs to build list first ---
+        # --- CSV mode ---
         entries = []
-        last_pct = -1
-        for idx, (root, name, ext) in enumerate(file_list):
-            pct = idx * 100 // total_files
-            if pct >= last_pct + 5 or idx == 0:
-                print(f"  Scanning... {idx}/{total_files} ({pct}%)")
-                last_pct = pct
 
-            full_path = os.path.join(root, name)
-            try:
-                lstat = os.lstat(full_path)
-            except OSError:
-                continue
+        if parallel <= 1:
+            last_pct = -1
+            for idx, (root, name, ext) in enumerate(file_list):
+                pct = idx * 100 // total_files
+                if pct >= last_pct + 5 or idx == 0:
+                    print(f"  Scanning... {idx}/{total_files} ({pct}%)")
+                    last_pct = pct
 
-            if os.path.islink(full_path):
-                continue
+                full_path = os.path.join(root, name)
+                try:
+                    lstat = os.lstat(full_path)
+                    if os.path.islink(full_path):
+                        continue
+                    stat = os.stat(full_path)
+                    if stat.st_size == 0:
+                        continue
+                except OSError:
+                    continue
 
-            try:
-                stat = os.stat(full_path)
-            except OSError:
-                continue
+                entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
+                entries.append(entry)
+        else:
+            # Parallel CSV mode
+            valid_files = []
+            for root, name, ext in file_list:
+                full_path = os.path.join(root, name)
+                try:
+                    lstat = os.lstat(full_path)
+                    if os.path.islink(full_path):
+                        continue
+                    stat = os.stat(full_path)
+                    if stat.st_size == 0:
+                        continue
+                    valid_files.append((full_path, name, ext, stat))
+                except OSError:
+                    continue
 
-            size_bytes = stat.st_size
-            if size_bytes == 0:
-                continue
-
-            entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
-            entries.append(entry)
+            print(f"  Using {parallel} parallel workers...")
+            last_pct = -1
+            done_count = 0
+            with ThreadPoolExecutor(max_workers=parallel) as executor:
+                future_to_file = {
+                    executor.submit(_compute_entry, fp, name, ext, stat, input_dir, scan_time, geocode=geocode): (fp, name, ext)
+                    for fp, name, ext, stat in valid_files
+                }
+                for future in as_completed(future_to_file):
+                    done_count += 1
+                    pct = done_count * 100 // len(valid_files)
+                    if pct >= last_pct + 5 or done_count == 1:
+                        print(f"  Scanning... {done_count}/{len(valid_files)} ({pct}%)")
+                        last_pct = pct
+                    try:
+                        entries.append(future.result())
+                    except Exception:
+                        pass
 
         fieldnames = list(entries[0].keys()) if entries else []
         with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
@@ -476,6 +570,10 @@ def main() -> None:
                         help="Reverse-geocode GPS coordinates to place names (default: on)")
     parser.add_argument("--no-geocode", action="store_false", dest="geocode",
                         help="Skip reverse geocoding (faster scan)")
+    parser.add_argument("--parallel", "-p", type=int, default=1,
+                        help="Number of parallel workers (default: 1, try 4 for speed)")
+    parser.add_argument("--incremental", action="store_true",
+                        help="Only scan new or modified files (skip unchanged, DB mode only)")
     args = parser.parse_args()
 
     input_dir = os.path.abspath(args.source)
@@ -496,7 +594,8 @@ def main() -> None:
     else:
         use_db = False
 
-    scan_directory(input_dir, output_path, use_db=use_db, geocode=args.geocode)
+    scan_directory(input_dir, output_path, use_db=use_db, geocode=args.geocode,
+                   parallel=args.parallel, incremental=args.incremental)
 
 
 if __name__ == "__main__":

@@ -9,18 +9,35 @@ names, album-name maps and human-readable size formatting.
 from datetime import datetime
 
 # ---------------------------------------------------------------------------
-# File extensions
+# File extensions (single source of truth — always WITHOUT leading dot)
 # ---------------------------------------------------------------------------
-RAW_EXTS = {"dng", "cr2", "nef", "arw"}
+
+RAW_EXTS = {"dng", "cr2", "nef", "arw", "orf", "rw2", "raf", "srw", "raw"}
 
 IMAGE_EXTS = {
-    "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif", "webp",
+    "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff",
+    "heic", "heif", "webp", "avif", "ico",
+    "ppm", "pgm", "pbm",
 } | RAW_EXTS
 
 VIDEO_EXTS = {
     "mov", "mp4", "m4v", "avi", "mkv", "3gp", "mpg", "mpeg",
-    "hevc", "wmv", "flv",
+    "hevc", "wmv", "flv", "webm", "mts", "m2ts",
 }
+
+# Convenient subsets (no leading dot)
+JPEG_EXTS = {"jpg", "jpeg"}
+HEIC_EXTS = {"heic", "heif"}
+
+# Combined media set
+MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
+
+# Dot-prefixed variants for direct comparison with Path.suffix output
+IMAGE_EXTENSIONS = {f".{e}" for e in IMAGE_EXTS}
+VIDEO_EXTENSIONS = {f".{e}" for e in VIDEO_EXTS}
+PHOTO_EXTENSIONS = {f".{e}" for e in MEDIA_EXTS}
+JPEG_EXTENSIONS = {f".{e}" for e in JPEG_EXTS}
+HEIC_EXTENSIONS = {f".{e}" for e in HEIC_EXTS}
 
 # ---------------------------------------------------------------------------
 # Core Data epoch (Apple Photos.sqlite timestamps): 2001-01-01 00:00:00 UTC
@@ -81,6 +98,8 @@ def get_format_family(ext: str) -> str:
         return "raw"
     elif ext_lower == "webp":
         return "webp"
+    elif ext_lower == "avif":
+        return "avif"
     else:
         return "other"
 

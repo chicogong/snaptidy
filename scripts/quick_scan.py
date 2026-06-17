@@ -25,10 +25,8 @@ from datetime import datetime
 
 # Shared constants/helpers. constants.py is stdlib-only; compute_sha256 uses
 # only hashlib — so quick_scan stays a zero-external-dependency entry point.
-from constants import IMAGE_EXTS, VIDEO_EXTS, get_format_family
+from constants import IMAGE_EXTS, VIDEO_EXTS, MEDIA_EXTS, get_format_family
 from photo_metadata import compute_sha256
-
-MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
 
 # Apple pre-computed ML quality feature keys from ZCOMPUTEDASSETATTRIBUTES
 APPLE_QUALITY_KEYS = [

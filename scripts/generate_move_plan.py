@@ -23,6 +23,8 @@ import sqlite3
 import sys
 import subprocess
 
+from constants import RAW_EXTS, HEIC_EXTS
+
 
 def read_duplicates(dups_path: str) -> dict:
     """Read duplicates CSV, return {group_id: [file_path, ...]}."""
@@ -134,9 +136,9 @@ def score_file(meta: dict, strategy: str, prefer_folders: list = None) -> float:
 
     # RAW format bonus (+20)
     ext = (meta.get("extension") or "").lower()
-    if ext in ("dng", "cr2", "nef", "arw"):
+    if ext in RAW_EXTS:
         score += 20
-    elif ext in ("heic", "heif"):
+    elif ext in HEIC_EXTS:
         score += 10  # HEIC is better than JPG
 
     # Non-screenshot bonus (+15)

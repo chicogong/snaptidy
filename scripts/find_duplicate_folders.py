@@ -25,25 +25,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Folder hashing
-# ---------------------------------------------------------------------------
-
-PHOTO_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif",
-    ".webp", ".heic", ".heif", ".avif", ".raw", ".cr2", ".nef",
-    ".arw", ".dng", ".orf", ".rw2", ".raf", ".srw",
-    ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".wmv", ".3gp",
-}
-
-
-def format_size(size_bytes: int) -> str:
-    """Format bytes as human-readable string."""
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if abs(size_bytes) < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} PB"
+from constants import PHOTO_EXTENSIONS, format_size
 
 
 def build_folder_index_from_db(index_path: str) -> dict:

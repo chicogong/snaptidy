@@ -37,7 +37,7 @@ from photo_metadata import (
     compute_aspect_ratio,
 )
 from constants import (
-    IMAGE_EXTS, VIDEO_EXTS, CORE_DATA_EPOCH, get_format_family, core_data_to_iso,
+    IMAGE_EXTS, VIDEO_EXTS, HEIC_EXTS, CORE_DATA_EPOCH, get_format_family, core_data_to_iso,
 )
 from reverse_geocode import reverse_geocode, init_cache as geo_init_cache, flush_cache as geo_flush_cache
 
@@ -494,7 +494,7 @@ def scan_photos_library(library_path: str, output_path: str,
         entries.append(entry_dict)
 
         # Track HEIC count for stats
-        if ext in ("heic", "heif"):
+        if ext in HEIC_EXTS:
             heic_count += 1
 
         # Stream to output DB immediately — zero data loss on crash

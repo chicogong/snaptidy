@@ -21,7 +21,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 
-from constants import format_size
+from constants import format_size, VIDEO_EXTS
 
 
 def get_thumbnail_base64(path: str, max_size: int = 200) -> str:
@@ -208,7 +208,7 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
             thumb_b64 = get_thumbnail_base64(path)
             if thumb_b64:
                 thumb_html = f'<img class="thumbnail" src="data:image/jpeg;base64,{thumb_b64}" alt="{fname_escaped}">'
-            elif ext in ("mov", "mp4", "m4v"):
+            elif ext in VIDEO_EXTS:
                 thumb_html = '<div class="no-thumb">Video</div>'
             else:
                 thumb_html = '<div class="no-thumb">No preview</div>'

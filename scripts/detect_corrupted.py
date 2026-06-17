@@ -21,19 +21,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# Image corruption detection (layered approach)
-# ---------------------------------------------------------------------------
-
-IMAGE_EXTENSIONS = {
-    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".tif",
-    ".webp", ".heic", ".heif", ".avif", ".ico", ".ppm", ".pgm", ".pbm",
-}
-
-VIDEO_EXTENSIONS = {
-    ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".wmv", ".flv",
-    ".webm", ".3gp", ".mpg", ".mpeg", ".mts", ".m2ts",
-}
+from constants import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS
 
 
 def check_file_exists(file_path: str) -> tuple:

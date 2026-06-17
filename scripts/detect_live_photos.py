@@ -33,7 +33,7 @@ import sqlite3
 import sys
 from collections import defaultdict
 
-from constants import IMAGE_EXTS, VIDEO_EXTS
+from constants import IMAGE_EXTS, VIDEO_EXTS, JPEG_EXTS, HEIC_EXTS
 
 
 # ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ from constants import IMAGE_EXTS, VIDEO_EXTS
 LIVE_PHOTO_VIDEO_EXTS = {"mov", "mp4", "m4v"}
 
 # Still image extensions that can be Live Photo components
-LIVE_PHOTO_IMAGE_EXTS = {"heic", "heif", "jpg", "jpeg"}
+LIVE_PHOTO_IMAGE_EXTS = HEIC_EXTS | JPEG_EXTS
 
 # Common Live Photo base filename patterns
 # IMG_0001, FULL_0001, DSC_0001, etc.

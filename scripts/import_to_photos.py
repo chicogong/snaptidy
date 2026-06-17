@@ -40,7 +40,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 
 # Shared helpers (single source of truth)
-from constants import IMAGE_EXTS, VIDEO_EXTS, CORE_DATA_EPOCH
+from constants import IMAGE_EXTS, VIDEO_EXTS, MEDIA_EXTS, CORE_DATA_EPOCH
 from photo_metadata import compute_sha256
 from applescript_utils import escape_applescript as _escape_applescript
 
@@ -61,8 +61,6 @@ except ImportError:
 
 # Checkpoint file for resume support
 CHECKPOINT_FILENAME = "import_checkpoint.json"
-
-MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
 
 # Android / external drive DCIM patterns
 ANDROID_PATTERNS = {"dcim", "camera", "100media", "100andro", "photo"}

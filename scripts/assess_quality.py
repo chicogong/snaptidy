@@ -38,6 +38,8 @@ import json
 import os
 import sqlite3
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from photo_metadata import PILLOW_AVAILABLE
 from constants import IMAGE_EXTS
@@ -262,11 +264,51 @@ def migrate_db(conn: sqlite3.Connection) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Single-file quality assessment (callable from thread pool)
+# ---------------------------------------------------------------------------
+
+def _assess_one(file_path: str, ext: str, width: int, height: int) -> dict | None:
+    """Assess quality for a single image. Returns result dict or None on error."""
+    from PIL import Image
+
+    if ext not in IMAGE_EXTS:
+        return None
+    if not os.path.exists(file_path):
+        return None
+
+    try:
+        with Image.open(file_path) as img:
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+
+            max_dim = 800
+            if max(img.size) > max_dim:
+                ratio = max_dim / max(img.size)
+                new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
+                img = img.resize(new_size, Image.Resampling.BILINEAR)
+
+            blur = compute_blur_score(img)
+            brightness = compute_brightness(img)
+            contrast = compute_contrast(img)
+            quality = compute_quality_score(blur, brightness, contrast, width, height)
+
+        return {
+            "file_path": file_path,
+            "blur_score": blur,
+            "brightness": brightness,
+            "contrast": contrast,
+            "quality_score": quality,
+        }
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Main assessment logic
 # ---------------------------------------------------------------------------
 
 def assess_quality(index_path: str, incremental: bool = False,
-                   report_path: str = None) -> dict:
+                   report_path: str = None, parallel: int = 1) -> dict:
     """Assess quality for all images in the index.
 
     Args:
@@ -306,70 +348,46 @@ def assess_quality(index_path: str, incremental: bool = False,
         conn.close()
         return {"total": 0, "assessed": 0}
 
-    print(f"Assessing quality for {total} images...")
+    print(f"Assessing quality for {total} images (parallel={parallel})...")
 
     assessed = 0
     errors = 0
     report_rows = []
     last_pct = -1
 
-    for idx, row in enumerate(rows):
-        pct = idx * 100 // total
-        if pct >= last_pct + 5 or idx == 0:
-            print(f"  Assessing... {idx}/{total} ({pct}%)")
-            last_pct = pct
+    if parallel <= 1:
+        # Sequential mode (original logic, for compatibility / debugging)
+        for idx, row in enumerate(rows):
+            pct = idx * 100 // total
+            if pct >= last_pct + 5 or idx == 0:
+                print(f"  Assessing... {idx}/{total} ({pct}%)")
+                last_pct = pct
 
-        file_path = row["file_path"]
-        ext = (row["extension"] or "").lower()
-        width = 0
-        height = 0
-        try:
-            width = int(row["width"] or 0)
-            height = int(row["height"] or 0)
-        except (ValueError, TypeError):
-            pass
+            file_path = row["file_path"]
+            ext = (row["extension"] or "").lower()
+            width = 0
+            height = 0
+            try:
+                width = int(row["width"] or 0)
+                height = int(row["height"] or 0)
+            except (ValueError, TypeError):
+                pass
 
-        # Skip non-image files
-        if ext not in IMAGE_EXTS:
-            continue
+            result = _assess_one(file_path, ext, width, height)
+            if result is None:
+                if ext in IMAGE_EXTS:
+                    errors += 1
+                continue
 
-        # Check file exists
-        if not os.path.exists(file_path):
-            errors += 1
-            continue
-
-        try:
-            # Open image — resize for speed (max 800px on longest side)
-            with Image.open(file_path) as img:
-                # Convert to RGB if needed (for RGBA, palette, etc.)
-                if img.mode not in ("RGB", "L"):
-                    img = img.convert("RGB")
-
-                # Resize for faster computation (quality metrics are
-                # resolution-independent; blur/brightness/contrast work
-                # on downscaled images just fine)
-                max_dim = 800
-                if max(img.size) > max_dim:
-                    ratio = max_dim / max(img.size)
-                    new_size = (int(img.size[0] * ratio), int(img.size[1] * ratio))
-                    img = img.resize(new_size, Image.Resampling.BILINEAR)
-
-                blur = compute_blur_score(img)
-                brightness = compute_brightness(img)
-                contrast = compute_contrast(img)
-                quality = compute_quality_score(blur, brightness, contrast, width, height)
-
-            # Update DB
             conn.execute(
                 "UPDATE photos SET blur_score = ?, brightness = ?, contrast = ?, quality_score = ? "
                 "WHERE file_path = ?",
-                (blur, brightness, contrast, quality, file_path),
+                (result["blur_score"], result["brightness"],
+                 result["contrast"], result["quality_score"], file_path),
             )
             conn.commit()
-
             assessed += 1
 
-            # Collect for report
             if report_path:
                 report_rows.append({
                     "file_path": file_path,
@@ -378,15 +396,71 @@ def assess_quality(index_path: str, incremental: bool = False,
                     "width": width,
                     "height": height,
                     "category": row["category"] or "",
-                    "blur_score": round(blur, 2) if blur >= 0 else "",
-                    "brightness": round(brightness, 2) if brightness >= 0 else "",
-                    "contrast": round(contrast, 2) if contrast >= 0 else "",
-                    "quality_score": quality,
+                    "blur_score": round(result["blur_score"], 2) if result["blur_score"] >= 0 else "",
+                    "brightness": round(result["brightness"], 2) if result["brightness"] >= 0 else "",
+                    "contrast": round(result["contrast"], 2) if result["contrast"] >= 0 else "",
+                    "quality_score": result["quality_score"],
                 })
+    else:
+        # Parallel mode — compute in threads, batch-write to DB
+        tasks = []
+        for row in rows:
+            ext = (row["extension"] or "").lower()
+            if ext not in IMAGE_EXTS:
+                continue
+            file_path = row["file_path"]
+            width = 0
+            height = 0
+            try:
+                width = int(row["width"] or 0)
+                height = int(row["height"] or 0)
+            except (ValueError, TypeError):
+                pass
+            tasks.append((file_path, ext, width, height, row))
 
-        except Exception as e:
-            errors += 1
-            continue
+        done_count = 0
+        with ThreadPoolExecutor(max_workers=parallel) as executor:
+            future_to_row = {
+                executor.submit(_assess_one, fp, ext, w, h): (fp, ext, w, h, row)
+                for fp, ext, w, h, row in tasks
+            }
+            for future in as_completed(future_to_row):
+                done_count += 1
+                pct = done_count * 100 // len(tasks)
+                if pct >= last_pct + 5 or done_count == 1:
+                    print(f"  Assessing... {done_count}/{len(tasks)} ({pct}%)")
+                    last_pct = pct
+
+                fp, ext, w, h, row = future_to_row[future]
+                result = future.result()
+                if result is None:
+                    errors += 1
+                    continue
+
+                conn.execute(
+                    "UPDATE photos SET blur_score = ?, brightness = ?, contrast = ?, quality_score = ? "
+                    "WHERE file_path = ?",
+                    (result["blur_score"], result["brightness"],
+                     result["contrast"], result["quality_score"], fp),
+                )
+                assessed += 1
+
+                if report_path:
+                    report_rows.append({
+                        "file_path": fp,
+                        "filename": row["filename"] or "",
+                        "extension": ext,
+                        "width": w,
+                        "height": h,
+                        "category": row["category"] or "",
+                        "blur_score": round(result["blur_score"], 2) if result["blur_score"] >= 0 else "",
+                        "brightness": round(result["brightness"], 2) if result["brightness"] >= 0 else "",
+                        "contrast": round(result["contrast"], 2) if result["contrast"] >= 0 else "",
+                        "quality_score": result["quality_score"],
+                    })
+
+        # Batch commit all results
+        conn.commit()
 
     conn.close()
 
@@ -437,6 +511,8 @@ def main() -> None:
                         help="Also export a quality report (.csv or .json)")
     parser.add_argument("--incremental", action="store_true",
                         help="Only assess images without existing quality scores")
+    parser.add_argument("--parallel", "-p", type=int, default=1,
+                        help="Number of parallel workers (default: 1, try 4 for speed)")
     args = parser.parse_args()
 
     if not os.path.exists(args.index):
@@ -452,6 +528,7 @@ def main() -> None:
         os.path.abspath(args.index),
         incremental=args.incremental,
         report_path=os.path.abspath(args.report) if args.report else None,
+        parallel=args.parallel,
     )
 
     print(f"\n{'=' * 50}")

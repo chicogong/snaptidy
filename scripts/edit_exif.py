@@ -51,10 +51,11 @@ if PIEXIF_AVAILABLE:
 # EXIF editing helpers
 # ---------------------------------------------------------------------------
 
-# Formats that piexif can handle natively
+# Formats that piexif can handle natively (dot-prefixed for Path.suffix comparison)
+# Note: This is a tool-capability set, not the same as IMAGE_EXTENSIONS in constants
 PIEXIF_FORMATS = {".jpg", ".jpeg", ".tif", ".tiff", ".webp"}
 
-# Formats that need exiftool
+# Formats that need exiftool (dot-prefixed for Path.suffix comparison)
 EXIFTOOL_FORMATS = {".heic", ".heif", ".cr2", ".nef", ".arw", ".dng", ".png"}
 
 
