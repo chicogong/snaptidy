@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.8-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.9-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
@@ -37,6 +37,21 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
 
+## What's New in v3.9
+
+| Feature | Description |
+|---------|-------------|
+| 🎯 **Quality Assessment** | `assess_quality.py` — Blur/brightness/contrast/quality score (0-100), integrated with dedup strategy & review page |
+| 🎵 **Live Photo Detection** | `detect_live_photos.py` — Identify paired HEIC+MOV, keep Live Photos together during dedup |
+| 📷 **Orphan RAW Cleanup** | `find_orphan_raw.py` — Find RAW files without JPEG companion (or vice versa) |
+| 📅 **Timeline Viewer** | `generate_timeline.py` — Interactive HTML timeline, zoom by year/month/day, category filters |
+| 🔄 **Library Compare** | `compare_libraries.py` — Photos.app vs file-system, find unique & shared photos by SHA-256 |
+| 📥 **Google Takeout Import** | `import_google_takeout.py` — Import Google Photos export, merge JSON metadata to EXIF |
+| 🗺️ **GPX Geotagging** | `gpx_geotag.py` — Assign GPS from GPX track files to photos without coordinates |
+| 📊 **Event Clustering** | `cluster_events.py` — Auto-group photos into events by time + location |
+| 🎬 **Video Dedup** | `find_similar_videos.py` — Frame sampling + pHash for duplicate/similar video detection |
+| ✏️ **Smart Rename** | `rename_photos.py` — Rename by EXIF date/camera/location: `2025-06-15_Beijing_iPhone15_001.jpg` |
+
 ## What's New in v3.8
 
 | Feature | Description |
@@ -45,6 +60,8 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | ✏️ **EXIF Editing** | Strip GPS, set dates, write tags — `edit_exif.py` with backup/restore + `--dry-run` safety |
 | 🌍 **By-Location Organize** | `--mode by-location` organizes photos into `Country/Region/City/` folder structure |
 | 📊 **Location Stats** | `library_stats.py` now shows top cities by photo count in terminal & HTML reports |
+| 📋 **Interactive Review** | `generate_review.py` — HTML review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album), album display, favorites protection |
+| 🔍 **Privacy Risk Detection** | `detect_privacy_risks.py` — find sensitive documents (ID cards, bank cards, passports, passwords) via filename/folder/category/dimension heuristics |
 
 <details>
 <summary>v3.7</summary>
@@ -96,6 +113,18 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - ✏️ **EXIF Editing** — Strip GPS, set dates, write tags with backup/restore safety
 - 🌍 **By-Location Organize** — Organize photos into `Country/Region/City/` folder structure
 - 📊 **Library Health & Insights** — Read-only stats report: category/format/year/**location** breakdowns, health flags, top space consumers (terminal / JSON / HTML)
+- 🔍 **Privacy Risk Detection** — Find sensitive documents (ID cards, bank cards, passports, passwords, medical records) via filename/folder/category/dimension heuristics
+- 📋 **Interactive Review** — HTML review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album/quality), album display, favorites protection
+- 🎯 **Quality Assessment** — Blur/brightness/contrast scoring, integrated with dedup & review
+- 🎵 **Live Photo Detection** — Keep Live Photo pairs together during dedup
+- 📷 **Orphan RAW Cleanup** — Find RAW files without JPEG companion
+- 📅 **Timeline Viewer** — Interactive HTML timeline with zoom and category filters
+- 🔄 **Library Compare** — Photos.app vs file-system, find unique & shared by SHA-256
+- 📥 **Google Takeout Import** — Import Google Photos export with metadata merge
+- 🗺️ **GPX Geotagging** — Assign GPS from GPX track files
+- 📊 **Event Clustering** — Auto-group photos by time + location
+- 🎬 **Video Dedup** — Frame sampling + pHash for video duplicates
+- ✏️ **Smart Rename** — Rename by EXIF metadata with configurable templates
 - 🛡️ **Safety-First Design** — Read-only scanning, move-only operations, Trash mode with Finder recovery, CSV-based audit trail
 - 💾 **Zero Data Loss** — Streaming SQLite writes with per-entry commit
 - 💬 **Conversation-Driven** — Interact through your AI assistant; no GUI or config files needed
@@ -157,8 +186,10 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 
 1. **Scan** — Walk through your photo/video directory, extract metadata (size, SHA-256, EXIF date, GPS, camera info, dimensions, perceptual hash, auto-category, folder tag), and write to SQLite (recommended) or CSV
 2. **Find Duplicates** — Group files by exact hash (SHA-256) and perceptual hash (pHash), with optional fuzzy threshold
-3. **Generate Plan** — Smart multi-factor scoring decides which duplicate to keep. Supports configurable strategies and folder preferences
-4. **Review & Apply** — Open the CSV plan, verify everything looks right, then apply. Choose between move-to-folder or macOS Trash (recoverable)
+3. **Review** — Interactive HTML page to browse duplicates side-by-side, apply smart strategy rules, mark keep/remove
+4. **Generate Plan** — Smart multi-factor scoring decides which duplicate to keep. Supports configurable strategies and folder preferences
+5. **Apply** — Open the CSV plan, verify everything looks right, then apply. Choose between move-to-folder or macOS Trash (recoverable)
+6. **Undo** — Reverse the most recent move operation within 30 days
 
 ## Safety Guarantees
 
@@ -295,6 +326,175 @@ python3 scripts/reverse_geocode.py --lat 37.7749 --lon -122.4194 --backend nomin
 python3 scripts/reverse_geocode.py --lat 31.2304 --lon 121.4737 --cache-dir ./geocache
 ```
 
+### Interactive Review
+
+Review duplicates before deleting — **never acts on files directly**, only records your decisions:
+
+```bash
+# Generate interactive review page
+python3 scripts/generate_review.py \
+    --index ./photo_index.db \
+    --duplicates ./duplicates_exact.csv \
+    --similar ./duplicates_similar.csv \
+    --output ./review.html
+
+# Open review.html in browser, mark keep/remove, export decision CSV
+```
+
+**Smart strategy rules** (apply to all groups at once):
+| Strategy | Keeps | Best for |
+|----------|-------|----------|
+| Most metadata | Highest EXIF/camera/GPS/date completeness | Keep the most informative version |
+| Oldest | Earliest capture date | Keep the original |
+| Newest | Latest modification date | Keep the final edit |
+| Highest resolution | Largest pixel dimensions | Keep the sharpest version |
+| Preferred album | Photos from specified album | Keep photos in your favorite album |
+
+⭐ Photos marked as favorites are never auto-marked for deletion.
+
+### Privacy Risk Detection
+
+Find sensitive documents that shouldn't be in your photo library:
+
+```bash
+# Scan for privacy risks (auto-detect format from extension)
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./privacy_report.txt
+
+# JSON format for scripting
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./privacy_report.json
+
+# CSV format for spreadsheet review
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./privacy_report.csv
+
+# Only show high-risk and above
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./report.txt --min-risk high
+```
+
+**Detection methods**: filename patterns (ID cards, passports, bank cards, passwords), folder path analysis, category+keyword matching (financial app screenshots), dimension heuristics (card-shaped images).
+
+### Quality Assessment
+
+Assess blur/brightness/contrast for smarter dedup decisions:
+
+```bash
+# Assess quality and write scores to DB
+python3 scripts/assess_quality.py --index ./photo_index.db
+
+# Export quality report
+python3 scripts/assess_quality.py --index ./photo_index.db --report quality_report.csv
+
+# Incremental (only un-scored photos)
+python3 scripts/assess_quality.py --index ./photo_index.db --incremental
+```
+
+Scores are automatically used in dedup: `generate_move_plan.py --strategy quality` considers blur penalty and quality score bonus. The review page shows quality badges (Q0-100) and adds "Keep best quality" strategy.
+
+### Live Photo Detection
+
+```bash
+# Detect Live Photo pairs
+python3 scripts/detect_live_photos.py --index ./photo_index.db
+
+# Export report
+python3 scripts/detect_live_photos.py --index ./photo_index.db --report live_photos.json
+```
+
+### Timeline Viewer
+
+```bash
+# Generate interactive timeline
+python3 scripts/generate_timeline.py --index ./photo_index.db --output ./timeline.html
+
+# Limit thumbnails for large libraries
+python3 scripts/generate_timeline.py --index ./photo_index.db --output ./timeline.html --max-thumbs 2000
+
+# Filter by year range
+python3 scripts/generate_timeline.py --index ./photo_index.db --output ./timeline.html --from-year 2024
+```
+
+### Orphan RAW Cleanup
+
+```bash
+# Find RAW files without JPEG companion
+python3 scripts/find_orphan_raw.py --index ./photo_index.db --output ./orphan_raw.csv
+
+# Find both orphan RAW and orphan JPEG
+python3 scripts/find_orphan_raw.py --index ./photo_index.db --output ./orphan_report.csv --both
+```
+
+### Library Compare
+
+```bash
+# Compare Photos.app vs file-system
+python3 scripts/compare_libraries.py \
+    --library ~/Pictures/Photos\ Library.photoslibrary \
+    --index ./photo_index.db \
+    --output comparison.json
+
+# Only show unique items
+python3 scripts/compare_libraries.py \
+    --library ~/Pictures/Photos\ Library.photoslibrary \
+    --index ./photo_index.db \
+    --output comparison.csv --unique-only
+```
+
+### Google Takeout Import
+
+```bash
+# Scan and index Google Takeout
+python3 scripts/import_google_takeout.py \
+    --source ~/Downloads/takeout-20250615 \
+    --output ./takeout_index.db
+
+# Also write metadata to EXIF
+python3 scripts/import_google_takeout.py \
+    --source ~/Downloads/takeout-20250615 \
+    --output ./takeout_index.db --write-exif
+```
+
+### GPX Geotagging
+
+```bash
+# Geotag photos from GPX track
+python3 scripts/gpx_geotag.py --index ./photo_index.db --gpx track.gpx
+
+# Preview only (dry-run)
+python3 scripts/gpx_geotag.py --index ./photo_index.db --gpx track.gpx --dry-run
+
+# Also write GPS to EXIF, with timezone offset
+python3 scripts/gpx_geotag.py --index ./photo_index.db --gpx track.gpx --write-exif --timezone-offset +8
+```
+
+### Event Clustering
+
+```bash
+# Cluster photos into events (4-hour gap)
+python3 scripts/cluster_events.py --index ./photo_index.db --output events.json
+
+# Custom gap and location-aware
+python3 scripts/cluster_events.py --index ./photo_index.db --output events.csv --gap-hours 2 --use-location
+```
+
+### Video Dedup
+
+```bash
+# Find similar videos (requires ffmpeg)
+python3 scripts/find_similar_videos.py --index ./photo_index.db --output similar_videos.csv
+```
+
+### Smart Rename
+
+```bash
+# Preview rename (dry-run)
+python3 scripts/rename_photos.py --index ./photo_index.db --template "{date}_{camera}_{seq}"
+
+# Execute rename
+python3 scripts/rename_photos.py --index ./photo_index.db --template "{date}_{camera}_{seq}" --execute
+
+# Rename with location
+python3 scripts/rename_photos.py --index ./photo_index.db --template "{date}_{city}_{seq}" --execute
+```
+
 ### EXIF Editing
 
 ```bash
@@ -378,6 +578,17 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `import_to_photos.py` | Import to Photos.app with dedup | Source directory | Import report JSON |
 | `generate_preview.py` | HTML thumbnail preview | Duplicates CSV + index | `preview.html` |
 | `generate_review.py` | Interactive HTML review with smart strategy rules | `.db` index + duplicates CSVs | `review.html` + decision CSV |
+| `detect_privacy_risks.py` | Find sensitive documents (ID/bank cards, passports, passwords) | `.db` index | `.json` / `.csv` / `.txt` report |
+| `assess_quality.py` | Blur/brightness/contrast/quality score (0-100) | `.db` index | DB columns + `.csv` / `.json` report |
+| `detect_live_photos.py` | Identify Live Photo pairs (HEIC+MOV) | `.db` index | `live_photo_group` column |
+| `find_orphan_raw.py` | Find orphan RAW files without JPEG companion | `.db` index | `.csv` / `.json` report |
+| `generate_timeline.py` | Interactive HTML timeline (year/month/day zoom) | `.db` index | `timeline.html` |
+| `compare_libraries.py` | Compare Photos.app vs file-system (SHA-256) | `.db` + `.photoslibrary` | `.json` / `.csv` report |
+| `import_google_takeout.py` | Import Google Photos export + merge JSON metadata | Takeout directory | `.db` index |
+| `gpx_geotag.py` | Assign GPS from GPX track files | `.db` index + `.gpx` | DB columns + EXIF |
+| `cluster_events.py` | Auto-group photos into events by time+location | `.db` index | `.json` / `.csv` report |
+| `find_similar_videos.py` | Video dedup via frame sampling + pHash | `.db` index | `.csv` report |
+| `rename_photos.py` | Smart rename by EXIF date/camera/location | `.db` index | Renamed files + undo record |
 | `generate_album_report.py` | HTML album organization report (before/after diff) | `.db` index + stats | `album_report.html` |
 | `library_stats.py` | Library health & insights (read-only, **location breakdown**) | `.db` index | terminal / JSON / `health.html` |
 | `reverse_geocode.py` | GPS → place names (city/region/country) | Lat/lon coordinates | Place name text |

@@ -116,6 +116,15 @@ def score_file(meta: dict, strategy: str, prefer_folders: list = None) -> float:
     elif category == "wechat":
         score -= 10  # Penalize WeChat compressed images
 
+    # Quality score bonus (+0 to +40) — from assess_quality.py
+    try:
+        qs = int(meta.get("quality_score") or -1)
+        if qs >= 0:
+            # quality_score is 0-100, map to 0-40 bonus
+            score += qs * 0.4
+    except (ValueError, TypeError):
+        pass
+
     # Default folder priority (applied even without --prefer-folder)
     # Camera originals and organized folders are preferred over backups/downloads
     folder_tag = meta.get("folder_tag") or ""
@@ -147,6 +156,17 @@ def score_file(meta: dict, strategy: str, prefer_folders: list = None) -> float:
             score += 50
 
     # Strategy overrides
+    if strategy == "quality":
+        # Blur penalty — blurry images should be deprioritized
+        try:
+            blur = float(meta.get("blur_score") or -1)
+            if 0 <= blur < 30:
+                score -= 30  # Very blurry — strong penalty
+            elif 30 <= blur < 80:
+                score -= 10  # Slightly blurry — mild penalty
+        except (ValueError, TypeError):
+            pass
+
     if strategy == "oldest":
         # Earliest date gets bonus
         dt = meta.get("exif_datetime") or meta.get("file_mtime") or ""

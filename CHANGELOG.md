@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - 2026-06-17
+
+### Added
+- **Quality assessment** (`assess_quality.py`) — Compute blur (Laplacian variance),
+  brightness (mean pixel intensity), contrast (standard deviation), and composite
+  quality score (0-100) for each image. Results stored in DB columns `blur_score`,
+  `brightness`, `contrast`, `quality_score`. Integrated with `generate_move_plan.py`
+  (blur penalty + quality bonus for `--strategy quality`) and `generate_review.py`
+  (quality badge + "Keep best quality" strategy). Supports `--incremental` mode.
+  Numpy for fast computation, PIL fallback without numpy.
+- **Live Photo detection** (`detect_live_photos.py`) — Identify iPhone Live Photo
+  pairs (HEIC+MOV with matching base filename in same directory). Writes
+  `live_photo_group` column to DB so dedup tools keep pairs together.
+- **Orphan RAW cleanup** (`find_orphan_raw.py`) — Find RAW files without a JPEG
+  companion in the same directory (or vice versa with `--both`). Useful for
+  photographers who shoot RAW+JPEG and want to clean up orphans.
+- **Timeline viewer** (`generate_timeline.py`) — Interactive HTML page with
+  zoomable year → month → day timeline, category filters (photo/screenshot/wechat/
+  burst/video), quality badges, and responsive layout. Standalone HTML, no server.
+- **Library comparison** (`compare_libraries.py`) — Compare Photos.app library
+  against file-system folder by SHA-256 hash (definitive) and filename (approximate).
+  Find photos only in library, only on disk, or shared between both.
+- **Google Takeout import** (`import_google_takeout.py`) — Scan Google Photos
+  Takeout exports, find JSON sidecar metadata files, merge date/GPS/description
+  into photo EXIF. Optionally import into Photos.app. Handles Google's various
+  sidecar naming conventions.
+- **GPX geotagging** (`gpx_geotag.py`) — Assign GPS coordinates to photos without
+  location data by matching EXIF timestamps against GPX track points. Uses linear
+  interpolation between adjacent trackpoints. Supports `--tolerance`,
+  `--timezone-offset`, `--write-exif`, and `--dry-run`.
+- **Event clustering** (`cluster_events.py`) — Auto-group photos into events
+  by time gap (default 4h) and optionally by location (city changes start new event).
+  Generates event names like "Beijing (2025-06-15)". Can write `event_id` back to DB.
+- **Video dedup** (`find_similar_videos.py`) — Find duplicate/similar videos
+  using frame sampling (ffmpeg) + perceptual hash comparison. Supports configurable
+  frame count, similarity threshold, and Hamming distance. Requires ffmpeg.
+- **Smart rename** (`rename_photos.py`) — Rename photos using configurable templates
+  with metadata tokens: `{date}`, `{time}`, `{camera}`, `{city}`, `{seq}`, `{original}`.
+  Dry-run by default, collision-safe, undo record on execute.
+- **"Keep best quality" strategy** in `generate_review.py` — New smart strategy
+  option that selects the photo with the highest `quality_score` to keep.
+- **Quality score integration** in `generate_move_plan.py` — `--strategy quality`
+  now considers blur penalty and quality_score bonus when scoring duplicates.
+
 ## [3.8.0] - 2026-06-16
 
 ### Added

@@ -61,8 +61,38 @@ Import:
 Geocode:
   reverse_geocode.py        — GPS → place names (CoreLocation/Locationator/Nominatim + persistent cache)
 
+Quality:
+  assess_quality.py          — Blur/brightness/contrast/quality score (Laplacian + pixel stats)
+
 EXIF Edit:
   edit_exif.py              — Strip GPS / set dates / write tags (backup/restore safety)
+
+Live Photo:
+  detect_live_photos.py      — Identify HEIC+MOV pairs, keep together during dedup
+
+Orphan RAW:
+  find_orphan_raw.py         — Find RAW without JPEG companion (or vice versa)
+
+Timeline:
+  generate_timeline.py        — Interactive HTML timeline (year/month/day zoom + category filters)
+
+Library Compare:
+  compare_libraries.py        — Photos.app vs file-system (SHA-256 + filename matching)
+
+Google Import:
+  import_google_takeout.py    — Google Photos Takeout import + JSON metadata merge
+
+GPX Geotag:
+  gpx_geotag.py               — Assign GPS from GPX track files (timestamp interpolation)
+
+Event Clustering:
+  cluster_events.py           — Auto-group photos by time + location into events
+
+Video Dedup:
+  find_similar_videos.py      — Frame sampling + pHash for video duplicates
+
+Smart Rename:
+  rename_photos.py            — Rename by EXIF date/camera/location templates
 ```
 
 Each step is independent and produces a .db/.csv for the next step. This design allows:
@@ -148,6 +178,7 @@ SQLite `photos` table columns:
 - Location: gps_latitude, gps_longitude, place_city, place_region, place_country, place_country_code
 - Camera: camera_make, camera_model
 - Priority: folder_tag, scan_root, scanned_at
+- Quality: blur_score, brightness, contrast, quality_score (from assess_quality.py)
 - Photos.app exclusive: photos_favorite, photos_hidden, photos_screenshot, photos_duplicate_visibility, photos_cloud_state, photos_albums, photos_shared_albums, photos_icloud_locally_available
 
 Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible).
@@ -158,6 +189,7 @@ Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible)
 - piexif: EXIF data extraction (including SubSecTime) + EXIF editing (strip GPS, set dates, write tags)
 - imagehash: Perceptual hash computation
 - pillow-heif: Optional HEIC/HEIF image support
+- numpy: Optional for fast blur detection (Laplacian variance). Falls back to PIL if unavailable.
 - pyobjc-framework-Photos: Optional Photos.app PyObjC deletion
 - photoscript: Optional high-level Photos.app import (recommended for import workflow)
 - exiftool: Optional EXIF editing fallback for HEIC/RAW (via subprocess)
@@ -245,3 +277,22 @@ Modify photo metadata with safety guarantees:
 ### Batch Operations
 
 `strip-gps --index` reads the scan index DB and strips GPS from all indexed photos. Use `--only-gps` to only process photos that have GPS coordinates.
+
+## Quality Assessment (assess_quality.py)
+
+Compute blur/brightness/contrast/quality metrics for each image. Results stored in DB columns: `blur_score`, `brightness`, `contrast`, `quality_score`.
+
+### Quality Score Formula (0-100)
+
+| Component | Weight | Method |
+|-----------|--------|--------|
+| Sharpness | 40% | Laplacian variance (numpy or PIL fallback) |
+| Exposure | 25% | Mean brightness — penalize too dark (<60) or clipped (>180) |
+| Contrast | 20% | Pixel intensity standard deviation |
+| Resolution | 15% | Pixel count mapping (1MP→6, 8MP→10, 20MP→15) |
+
+### Integration
+
+- `generate_move_plan.py --strategy quality` considers blur penalty and quality_score bonus
+- `generate_review.py` shows quality badge (Q0-100) on review cards, adds "保留画质最好的" strategy
+- Use `--incremental` to only assess photos without existing scores

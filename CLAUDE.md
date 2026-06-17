@@ -63,6 +63,36 @@ python3 scripts/apply_move_plan.py --plan ./plan.csv --mode trash
 
 # 7. Undo if needed
 python3 scripts/apply_move_plan.py --plan ./plan.csv --undo
+
+# 8. Assess quality (blur/brightness/contrast → DB columns)
+python3 scripts/assess_quality.py --index ./photo_index.db
+
+# 9. Detect Live Photo pairs
+python3 scripts/detect_live_photos.py --index ./photo_index.db
+
+# 10. Generate timeline view
+python3 scripts/generate_timeline.py --index ./photo_index.db --output ./timeline.html
+
+# 11. Find orphan RAW files
+python3 scripts/find_orphan_raw.py --index ./photo_index.db --output ./orphan.csv
+
+# 12. Cluster into events
+python3 scripts/cluster_events.py --index ./photo_index.db --output events.json --write-db
+
+# 13. Find similar videos (requires ffmpeg)
+python3 scripts/find_similar_videos.py --index ./photo_index.db --output ./video_dupes.csv
+
+# 14. Smart rename (dry-run first)
+python3 scripts/rename_photos.py --index ./photo_index.db --template "{date}_{camera}_{seq}"
+
+# 15. GPX geotag photos without GPS
+python3 scripts/gpx_geotag.py --index ./photo_index.db --gpx track.gpx --dry-run
+
+# 16. Compare Photos.app vs file-system
+python3 scripts/compare_libraries.py --library ~/Pictures/Photos\ Library.photoslibrary --index ./photo_index.db --output comparison.json
+
+# 17. Import Google Takeout
+python3 scripts/import_google_takeout.py --source ~/Downloads/takeout --output ./takeout_index.db
 ```
 
 ### Option B: One-command interactive workflow

@@ -175,6 +175,7 @@ def generate_review_html(index_db: str, duplicates_csv: str = None,
                 "favorite": bool(meta.get("photos_favorite", 0)),
                 "hidden": bool(meta.get("photos_hidden", 0)),
                 "meta_score": _calc_metadata_score(meta),
+                "quality_score": int(meta.get("quality_score") or -1),
                 "thumb": thumb,
             })
         review_data["duplicate_groups"].append(group)
@@ -202,6 +203,7 @@ def generate_review_html(index_db: str, duplicates_csv: str = None,
                 "favorite": bool(meta.get("photos_favorite", 0)),
                 "hidden": bool(meta.get("photos_hidden", 0)),
                 "meta_score": _calc_metadata_score(meta),
+                "quality_score": int(meta.get("quality_score") or -1),
                 "thumb": thumb,
             })
         review_data["similar_groups"].append(group)
@@ -226,6 +228,7 @@ def generate_review_html(index_db: str, duplicates_csv: str = None,
             "favorite": bool(item.get("photos_favorite", 0)),
             "hidden": bool(item.get("photos_hidden", 0)),
             "meta_score": _calc_metadata_score(item),
+            "quality_score": int(item.get("quality_score") or -1),
             "thumb": thumb,
             "review_category": item.get("review_category", ""),
         })
@@ -389,6 +392,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI"
     <label>智能策略:</label>
     <select id="strategy" onchange="applySmartRules()">
       <option value="most_metadata">保留元数据最全的</option>
+      <option value="best_quality">保留画质最好的</option>
       <option value="oldest">保留日期最早的</option>
       <option value="newest">保留日期最新的</option>
       <option value="largest">保留分辨率最高的</option>
@@ -469,6 +473,11 @@ function formatSize(bytes) {
 function scoreBadge(score) {
   const cls = score >= 60 ? 'score-high' : (score >= 30 ? 'score-mid' : 'score-low');
   return `<span class="score-badge ${cls}">${score}分</span>`;
+}
+
+function qualityBadge(qs) {
+  const cls = qs >= 70 ? 'score-high' : (qs >= 40 ? 'score-mid' : 'score-low');
+  return `<span class="score-badge ${cls}">Q${qs}</span>`;
 }
 
 function albumTags(albumsStr, preferredAlbum) {
@@ -581,6 +590,11 @@ function pickBestByStrategy(items, strategy) {
       case 'most_metadata':
         if (item.meta_score > best.meta_score) best = item;
         else if (item.meta_score === best.meta_score && item.size > best.size) best = item;
+        break;
+      case 'best_quality':
+        if (item.quality_score >= 0 && best.quality_score < 0) best = item;
+        else if (item.quality_score >= 0 && best.quality_score >= 0 && item.quality_score > best.quality_score) best = item;
+        else if (item.quality_score === best.quality_score && item.meta_score > best.meta_score) best = item;
         break;
       case 'oldest':
         if (item.date && (!best.date || item.date < best.date)) best = item;
@@ -742,6 +756,7 @@ function renderPhotoCard(item, gid, preferredAlbum) {
         ${dateStr} &middot; ${item.camera ? item.camera.replace(/</g,'&lt;') : '<span style="color:#c7c7cc">无相机</span>'}<br>
         EXIF: ${item.has_exif ? 'Yes' : '<span style="color:#ff3b30">No</span>'}
         &middot; 元数据: ${scoreBadge(item.meta_score)}
+        ${item.quality_score >= 0 ? '&middot; 质量: ' + qualityBadge(item.quality_score) : ''}
       </div>
     </div>`;
 }

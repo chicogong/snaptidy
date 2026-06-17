@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.8-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.9-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
 
@@ -37,6 +37,21 @@
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
 
+## v3.9 新功能
+
+| 功能 | 说明 |
+|------|------|
+| 🎯 **照片质量评估** | `assess_quality.py` — 模糊/亮度/对比度/质量评分(0-100)，集成到去重策略和审核页面 |
+| 🎵 **Live Photo 识别** | `detect_live_photos.py` — 识别 HEIC+MOV 配对，去重时保持 Live Photo 完整 |
+| 📷 **RAW 孤儿清理** | `find_orphan_raw.py` — 找到无 JPEG 伴侣的 RAW 文件 |
+| 📅 **时间线视图** | `generate_timeline.py` — 交互式 HTML 时间线，按年/月/日缩放，分类筛选 |
+| 🔄 **跨库对比** | `compare_libraries.py` — Photos.app vs 文件系统，按 SHA-256 找独有和共有照片 |
+| 📥 **Google Takeout 导入** | `import_google_takeout.py` — 导入 Google Photos 导出，合并 JSON 元数据到 EXIF |
+| 🗺️ **GPX 地理标注** | `gpx_geotag.py` — 从 GPX 轨迹文件给无 GPS 的照片补上位置信息 |
+| 📊 **事件聚类** | `cluster_events.py` — 按时间+地点自动分组为"事件" |
+| 🎬 **视频去重** | `find_similar_videos.py` — 视频帧采样 + 感知哈希检测重复视频 |
+| ✏️ **智能重命名** | `rename_photos.py` — 按 EXIF 日期/相机/地点重命名 |
+
 ## v3.8 新功能
 
 | 功能 | 说明 |
@@ -45,6 +60,8 @@
 | ✏️ **EXIF 编辑** | 移除 GPS、设置日期、写入标签 — `edit_exif.py` 带备份/恢复 + `--dry-run` 安全机制 |
 | 🌍 **按地点整理** | `--mode by-location` 将照片整理到 `国家/地区/城市/` 文件夹结构 |
 | 📊 **地点统计** | `library_stats.py` 现在显示按城市统计的照片数量（终端 + HTML 报告） |
+| 📋 **交互式审核** | `generate_review.py` — HTML 审核页面，智能策略规则（元数据/最早/最新/分辨率/偏好相册），相册展示，收藏保护 |
+| 🔍 **隐私风险检测** | `detect_privacy_risks.py` — 查找敏感文档（身份证、银行卡、护照、密码）基于文件名/文件夹/分类/尺寸启发式 |
 
 <details>
 <summary>v3.7</summary>
@@ -95,6 +112,18 @@
 - 📍 **逆地理编码** — 将 GPS 坐标转换为地名（CoreLocation/Nominatim），持久化缓存
 - ✏️ **EXIF 编辑** — 移除 GPS、设置日期、写入标签，带备份/恢复安全机制
 - 🌍 **按地点整理** — 将照片整理到 `国家/地区/城市/` 文件夹结构
+- 🔍 **隐私风险检测** — 查找敏感文档（身份证、银行卡、护照、密码、医疗记录）基于文件名/文件夹/分类/尺寸启发式
+- 📋 **交互式审核** — HTML 审核页面，智能策略规则（元数据/最早/最新/分辨率/偏好相册/画质），相册展示，收藏保护
+- 🎯 **照片质量评估** — 模糊/亮度/对比度评分，集成到去重策略和审核
+- 🎵 **Live Photo 识别** — 去重时保持 Live Photo 配对完整
+- 📷 **RAW 孤儿清理** — 找到无 JPEG 伴侣的 RAW 文件
+- 📅 **时间线视图** — 交互式 HTML 时间线，缩放和分类筛选
+- 🔄 **跨库对比** — Photos.app vs 文件系统，按 SHA-256 找独有和共有照片
+- 📥 **Google Takeout 导入** — 导入 Google Photos 导出，合并元数据
+- 🗺️ **GPX 地理标注** — 从 GPX 轨迹文件给照片补位置
+- 📊 **事件聚类** — 按时间+地点自动分组
+- 🎬 **视频去重** — 视频帧采样 + 感知哈希
+- ✏️ **智能重命名** — 按 EXIF 元数据重命名
 - 🛡️ **安全优先设计** — 只读扫描、仅移动操作、废纸篓模式、CSV 审计跟踪
 - 💾 **零数据丢失** — 流式 SQLite 写入，逐条提交
 - 💬 **对话驱动** — 通过 AI 助手交互，无需 GUI 或配置文件
@@ -156,8 +185,10 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 
 1. **扫描** — 遍历照片/视频目录，提取元数据（大小、SHA-256、EXIF 日期、GPS、相机信息、尺寸、感知哈希、自动分类、文件夹标签），写入 SQLite（推荐）或 CSV
 2. **查找重复** — 按精确哈希（SHA-256）和感知哈希（pHash）分组，支持模糊阈值
-3. **生成计划** — 智能多因素评分决定保留哪张，支持可配置策略和文件夹偏好
-4. **审核并执行** — 打开 CSV 计划验证，确认后执行，可选移至文件夹或废纸篓
+3. **审核** — 交互式 HTML 页面，并排浏览重复项，应用智能策略规则，标记保留/移除
+4. **生成计划** — 智能多因素评分决定保留哪张，支持可配置策略和文件夹偏好
+5. **执行** — 确认 CSV 计划后执行，可选移至文件夹或废纸篓（可恢复）
+6. **撤销** — 30 天内可撤销最近一次移动操作
 
 ## 安全保证
 
@@ -294,6 +325,52 @@ python3 scripts/reverse_geocode.py --lat 37.7749 --lon -122.4194 --backend nomin
 python3 scripts/reverse_geocode.py --lat 31.2304 --lon 121.4737 --cache-dir ./geocache
 ```
 
+### 交互式审核
+
+在删除前审核重复项 — **永不直接操作文件**，仅记录你的决定：
+
+```bash
+# 生成交互式审核页面
+python3 scripts/generate_review.py \
+    --index ./photo_index.db \
+    --duplicates ./duplicates_exact.csv \
+    --similar ./duplicates_similar.csv \
+    --output ./review.html
+
+# 在浏览器中打开 review.html，标记保留/移除，导出决策 CSV
+```
+
+**智能策略规则**（一键应用到所有分组）：
+| 策略 | 保留 | 适用于 |
+|------|------|--------|
+| 元数据最全 | EXIF/相机/GPS/日期完整度最高的 | 保留信息最丰富的版本 |
+| 日期最早 | 最早拍摄日期 | 保留原始照片 |
+| 日期最新 | 最近修改日期 | 保留最终编辑 |
+| 分辨率最高 | 最大像素尺寸 | 保留最清晰的版本 |
+| 偏好相册 | 来自指定相册的照片 | 保留你喜欢的相册中的照片 |
+
+⭐ 收藏照片永不会被自动标记为删除。
+
+### 隐私风险检测
+
+查找不应出现在照片库中的敏感文档：
+
+```bash
+# 扫描隐私风险（自动根据扩展名判断格式）
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./privacy_report.txt
+
+# JSON 格式（用于脚本处理）
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./privacy_report.json
+
+# CSV 格式（用于电子表格查看）
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./privacy_report.csv
+
+# 仅显示高风险及以上
+python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./report.txt --min-risk high
+```
+
+**检测方法**：文件名模式（身份证、护照、银行卡、密码）、文件夹路径分析、分类+关键词匹配（金融应用截图）、尺寸启发式（卡片形状图像）。
+
 ### EXIF 编辑
 
 ```bash
@@ -377,6 +454,17 @@ python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths pho
 | `import_to_photos.py` | 导入 Photos.app 并去重 | 来源目录 | 导入报告 JSON |
 | `generate_preview.py` | HTML 缩略图预览 | 重复 CSV + 索引 | `preview.html` |
 | `generate_review.py` | 交互式审核页面（智能策略规则） | `.db` 索引 + 重复 CSV | `review.html` + 决策 CSV |
+| `detect_privacy_risks.py` | 查找敏感文档（身份证/银行卡/护照/密码） | `.db` 索引 | `.json` / `.csv` / `.txt` 报告 |
+| `assess_quality.py` | 模糊/亮度/对比度/质量评分(0-100) | `.db` 索引 | DB 列 + `.csv` / `.json` 报告 |
+| `detect_live_photos.py` | 识别 Live Photo 配对(HEIC+MOV) | `.db` 索引 | `live_photo_group` 列 |
+| `find_orphan_raw.py` | 查找无 JPEG 伴侣的 RAW 文件 | `.db` 索引 | `.csv` / `.json` 报告 |
+| `generate_timeline.py` | 交互式 HTML 时间线（年/月/日缩放） | `.db` 索引 | `timeline.html` |
+| `compare_libraries.py` | Photos.app vs 文件系统对比(SHA-256) | `.db` + `.photoslibrary` | `.json` / `.csv` 报告 |
+| `import_google_takeout.py` | 导入 Google Photos 导出+合并元数据 | Takeout 目录 | `.db` 索引 |
+| `gpx_geotag.py` | 从 GPX 轨迹文件补 GPS | `.db` 索引 + `.gpx` | DB 列 + EXIF |
+| `cluster_events.py` | 按时间+地点自动分组为事件 | `.db` 索引 | `.json` / `.csv` 报告 |
+| `find_similar_videos.py` | 视频去重(帧采样+pHash) | `.db` 索引 | `.csv` 报告 |
+| `rename_photos.py` | 按 EXIF 日期/相机/地点智能重命名 | `.db` 索引 | 重命名文件 + 撤销记录 |
 | `generate_album_report.py` | HTML 相册整理报告（前后对比） | `.db` 索引 + 统计 | `album_report.html` |
 | `library_stats.py` | 照片库健康与洞察（只读，**地点分布**） | `.db` 索引 | 终端 / JSON / `health.html` |
 | `reverse_geocode.py` | GPS → 地名（城市/地区/国家） | 经纬度坐标 | 地名文本 |
