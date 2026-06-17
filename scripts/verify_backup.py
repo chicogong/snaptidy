@@ -173,6 +173,7 @@ def compare_full(source: dict, backup: dict) -> dict:
     missing = []
     extra = []
     changed = []
+    renamed = []   # Files found in backup with different name (by hash)
     matched_by_hash = set()
 
     # Build hash lookup for backup
@@ -216,13 +217,14 @@ def compare_full(source: dict, backup: dict) -> dict:
         else:
             # Not found by relative path — check by hash (renamed file)
             if src_hash and src_hash in backup_by_hash and src_hash not in matched_by_hash:
-                # File exists with different name
+                # File exists with different name — this is a rename, not truly missing
                 bk_matches = backup_by_hash[src_hash]
                 matched_by_hash.add(src_hash)
-                missing.append({
+                renamed.append({
                     "relative_path": rel_path,
                     "source_path": src_entry["path"],
                     "source_size": src_entry["size"],
+                    "backup_name": bk_matches[0]["relative_path"],
                     "note": f"Renamed in backup: {bk_matches[0]['relative_path']}",
                 })
             else:
@@ -246,7 +248,7 @@ def compare_full(source: dict, backup: dict) -> dict:
                 "backup_size": entry["size"],
             })
 
-    return {"missing": missing, "extra": extra, "changed": changed}
+    return {"missing": missing, "extra": extra, "changed": changed, "renamed": renamed}
 
 
 # ---------------------------------------------------------------------------
@@ -348,10 +350,13 @@ def main():
     n_missing = len(result["missing"])
     n_extra = len(result["extra"])
     n_changed = len(result["changed"])
+    n_renamed = len(result.get("renamed", []))
 
     print(f"\n  ✅ Verification complete in {elapsed:.1f}s")
     print(f"  ❌ Missing in backup: {n_missing}")
     print(f"  ➕ Extra in backup: {n_extra}")
+    if n_renamed > 0:
+        print(f"  📝 Renamed in backup: {n_renamed}")
     print(f"  🔄 Changed: {n_changed}")
 
     if n_missing > 0:
@@ -370,13 +375,21 @@ def main():
         if n_extra > 5:
             print(f"     ... and {n_extra - 5} more")
 
+    if n_renamed > 0:
+        renamed_size = sum(item.get("source_size", 0) for item in result["renamed"])
+        print(f"     Renamed total size: {format_size(renamed_size)}")
+        for item in result["renamed"][:10]:
+            print(f"     = {item['relative_path']} → {item['backup_name']}")
+        if n_renamed > 10:
+            print(f"     ... and {n_renamed - 10} more")
+
     if n_changed > 0:
         for item in result["changed"][:5]:
             print(f"     ~ {item['relative_path']}")
         if n_changed > 5:
             print(f"     ... and {n_changed - 5} more")
 
-    # Coverage rate
+    # Coverage rate (renamed files count as matched in full mode)
     total_source = len(source_index)
     if total_source > 0:
         matched = total_source - n_missing

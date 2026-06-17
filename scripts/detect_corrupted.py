@@ -169,10 +169,11 @@ def check_file(file_path: str, ext: str) -> dict:
         return result
 
     # Step 2: Format-specific check
-    ext_lower = ext.lower() if ext else Path(file_path).suffix.lower()
-    if ext_lower in IMAGE_EXTENSIONS:
+    ext_lower = ext.lower().lstrip(".") if ext else Path(file_path).suffix.lower().lstrip(".")
+    ext_with_dot = f".{ext_lower}" if ext_lower else ""
+    if ext_with_dot in IMAGE_EXTENSIONS:
         ok, ctype, detail = check_image_corrupted(file_path)
-    elif ext_lower in VIDEO_EXTENSIONS:
+    elif ext_with_dot in VIDEO_EXTENSIONS:
         ok, ctype, detail = check_video_corrupted(file_path)
     else:
         # Unknown format — skip

@@ -133,6 +133,11 @@ def infer_date_from_neighbors(file_path: str, folder_files: list,
 
     Finds the closest photo by filename sort order within gap_minutes
     of its date. Useful for burst-mode or sequential shots.
+
+    The gap_minutes parameter controls the maximum allowed time span
+    between the two nearest valid neighbors. If the two closest neighbors
+    with valid dates are more than gap_minutes apart, the inference is
+    considered unreliable and None is returned.
     """
     # Sort files by name for ordering
     sorted_files = sorted(folder_files, key=lambda x: x[0])
@@ -145,23 +150,32 @@ def infer_date_from_neighbors(file_path: str, folder_files: list,
     if my_idx is None:
         return None
 
-    # Check neighbors before and after
-    candidates = []
+    # Collect valid neighbors in order of distance (by index)
+    # A valid neighbor has a date and is not itself inferred from a neighbor
+    ordered_neighbors = []
     for offset in range(1, len(sorted_files)):
         for idx in [my_idx - offset, my_idx + offset]:
             if 0 <= idx < len(sorted_files):
                 _, dt, source = sorted_files[idx]
-                if dt and source != "neighbor":  # Don't chain neighbor inferences
-                    candidates.append((abs(idx - my_idx), dt))
-        if candidates:
-            break
+                if dt and source not in ("neighbor", "missing"):
+                    ordered_neighbors.append((abs(idx - my_idx), dt))
 
-    if not candidates:
+    if not ordered_neighbors:
         return None
 
-    # Use the closest neighbor's date (closest by index)
-    candidates.sort(key=lambda x: x[0])
-    return candidates[0][1]
+    # Use the closest neighbor's date
+    ordered_neighbors.sort(key=lambda x: x[0])
+    closest_date = ordered_neighbors[0][1]
+
+    # Validate with gap_minutes: if we have a second neighbor,
+    # check that the time span between neighbors is reasonable
+    if len(ordered_neighbors) >= 2:
+        second_date = ordered_neighbors[1][1]
+        time_span = abs((closest_date - second_date).total_seconds()) / 60
+        if time_span > gap_minutes:
+            return None  # Neighbors disagree too much — unreliable
+
+    return closest_date
 
 
 # ---------------------------------------------------------------------------
@@ -302,11 +316,11 @@ def fix_dates(index_path: str, strategy: str = "all", neighbor_gap: int = 30,
         folder = str(Path(fp).parent)
         folder_map[folder].append((fp, dt, source))
 
-    # Also add files needing fix to folder map
+    # Also add files needing fix to folder map (with None date)
+    # so that infer_date_from_neighbors() can locate them in the sorted list
     for item in needs_fix:
         folder = str(Path(item["file_path"]).parent)
-        if folder not in folder_map:
-            folder_map[folder] = []
+        folder_map[folder].append((item["file_path"], None, "missing"))
 
     # Fix dates
     stats = {"total": len(needs_fix), "fixed": 0, "by_source": defaultdict(int), "errors": 0}
