@@ -31,7 +31,7 @@ CATEGORY_ICONS = {
     "📱 Screenshots": "📱",
     "🔄 Burst": "🔄",
     "💬 WeChat": "💬",
-    "📹 Videos": "📹",
+    "🎬 Videos": "🎬",
     "🎵 Live Photos": "🎵",
     "📁 Other": "📁",
     "📅 No Date": "📅",
@@ -209,20 +209,22 @@ def generate_album_report_html(
     )
     rows = list(cursor)
 
-    # Category label mapping (same as organize_photos.py)
-    CATEGORY_ALBUM_NAMES = {
-        "photo": "📸 Photos",
-        "screenshot": "📱 Screenshots",
-        "burst": "🔄 Burst",
-        "wechat": "💬 WeChat",
-        "video": "📹 Videos",
-        "live_photo": "🎵 Live Photos",
-    }
-    FORMAT_ALBUM_NAMES = {
-        "jpeg": "JPEG", "heic": "HEIC", "heif": "HEIF",
-        "png": "PNG", "gif": "GIF", "tiff": "TIFF",
-        "raw": "RAW", "bmp": "BMP", "webp": "WebP", "avif": "AVIF",
-    }
+    # Category / format label mapping — reuse organize_photos.py as the
+    # single source of truth so album names stay identical between the
+    # organizer and this report (avoids emoji/label drift).
+    try:
+        from organize_photos import CATEGORY_ALBUM_NAMES, FORMAT_ALBUM_NAMES
+    except Exception:
+        CATEGORY_ALBUM_NAMES = {
+            "photo": "📸 Photos", "screenshot": "📱 Screenshots",
+            "burst": "🔄 Burst", "wechat": "💬 WeChat",
+            "video": "🎬 Videos", "live_photo": "🎵 Live Photos",
+        }
+        FORMAT_ALBUM_NAMES = {
+            "jpeg": "JPEG", "heic": "HEIC", "heif": "HEIF",
+            "png": "PNG", "gif": "GIF", "tiff": "TIFF",
+            "raw": "RAW", "bmp": "BMP", "webp": "WebP", "avif": "AVIF",
+        }
 
     for row in rows:
         filepath = row["file_path"]

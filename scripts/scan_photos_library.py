@@ -559,10 +559,12 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
         stats["total"] += 1
 
         # Album membership (needed for stats before continue)
+        # NOTE: use "," as the separator — all consumers (organize_photos,
+        # generate_move_plan) split photos_albums on commas. Keep them in sync.
         albums = album_map.get(pk, [])
-        album_str = "; ".join(albums) if albums else ""
+        album_str = ",".join(albums) if albums else ""
         shared_albums = shared_album_map.get(pk, [])
-        shared_album_str = "; ".join(shared_albums) if shared_albums else ""
+        shared_album_str = ",".join(shared_albums) if shared_albums else ""
 
         # Check iCloud local availability (needed for stats)
         icloud_locally_available = None

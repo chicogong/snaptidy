@@ -194,12 +194,23 @@ def ensure_photos_permission() -> bool:
 # File operations
 # ---------------------------------------------------------------------------
 
+def _escape_applescript(text: str) -> str:
+    """Escape a string for safe interpolation into an AppleScript string literal.
+
+    Backslashes must be escaped first, then double quotes.  Without this,
+    file paths containing quotes or backslashes break the script or allow
+    AppleScript injection.
+    """
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def move_to_trash(path: str) -> tuple:
     """Move a file to macOS Trash using osascript (Finder).  Returns (success, message)."""
     try:
+        esc_path = _escape_applescript(path)
         result = subprocess.run(
             ["/usr/bin/osascript", "-e",
-             f'tell application "Finder" to delete POSIX file "{path}"'],
+             f'tell application "Finder" to delete POSIX file "{esc_path}"'],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:

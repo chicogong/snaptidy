@@ -868,10 +868,10 @@ def prepare_shared_album_workflow(album_name: str, keyword: str = "snaptidy-shar
         -- Select all photos in the album
         set selection to thePhotos
 
-        display dialog "✅ {len(thePhotos)} photos selected and tagged.\n\n" & ¬
+        display dialog "✅ " & (count of thePhotos) & " photos selected and tagged.\n\n" & ¬
             "Now DRAG the selected photos to your shared album in the sidebar.\n\n" & ¬
             "Tip: The shared album should be visible in the left sidebar under 'Shared'.\n" & ¬
-            "The keyword '{keyword}' is added for future reference." with title "SnapTidy — Share to Shared Album" buttons {{"Done"}} default button 1
+            "The keyword '{esc_keyword}' is added for future reference." with title "SnapTidy — Share to Shared Album" buttons {{"Done"}} default button 1
     end tell
     '''
 

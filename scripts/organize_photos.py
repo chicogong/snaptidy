@@ -15,6 +15,7 @@ the full pipeline with user-friendly prompts and confirmation points.
 """
 
 import argparse
+import csv
 import json
 import os
 import sqlite3
@@ -264,7 +265,6 @@ def run_plan(prefs: dict, duplicates_csv: str, index_db: str, plan_csv: str, tar
     )
 
     # Write plan
-    import csv
     with open(plan_csv, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=["action", "source_path", "target_path", "reason"])
         writer.writeheader()
@@ -287,7 +287,6 @@ def generate_by_date_plan(index_db: str, plan_csv: str, target_root: str, date_f
 
     Returns number of planned moves.
     """
-    import csv
     from datetime import datetime as dt
 
     conn = sqlite3.connect(index_db)
@@ -377,8 +376,6 @@ def generate_by_category_plan(index_db: str, plan_csv: str, target_root: str) ->
 
     Returns number of planned moves.
     """
-    import csv
-
     conn = sqlite3.connect(index_db)
     conn.row_factory = sqlite3.Row
 
@@ -441,22 +438,28 @@ ALBUM_ORGANIZE_MODES = {
 }
 
 # Category → album name mapping (with emoji prefix for visual distinction)
+# This is the single source of truth — generate_album_report.py imports it.
 CATEGORY_ALBUM_NAMES = {
     "photo": "📸 Photos",
     "screenshot": "📱 Screenshots",
     "wechat": "💬 WeChat",
     "burst": "🔄 Burst",
     "video": "🎬 Videos",
+    "live_photo": "🎵 Live Photos",
 }
 
 # Format → album name mapping
 FORMAT_ALBUM_NAMES = {
     "jpeg": "JPEG",
     "heic": "HEIC",
+    "heif": "HEIF",
     "png": "PNG",
+    "gif": "GIF",
     "tiff": "TIFF",
     "raw": "RAW",
+    "bmp": "BMP",
     "webp": "WebP",
+    "avif": "AVIF",
     "other": "Other",
 }
 
@@ -809,8 +812,6 @@ def organize_photos_albums(index_db: str, organize_by: str = "date",
 
 def show_preview(index_db: str, plan_csv: str) -> dict:
     """Step 4: Show preview summary. Returns stats dict."""
-    import csv
-
     stats = {"total_moves": 0, "by_category": {}, "by_match_type": {}, "reclaimable_bytes": 0}
 
     conn = sqlite3.connect(index_db)
@@ -855,8 +856,6 @@ def format_bytes(n: int) -> str:
 
 def generate_manifest(prefs: dict, plan_csv: str, stats: dict, manifest_path: str) -> None:
     """Generate a plan manifest JSON for user review."""
-    import csv
-
     moves = []
     with open(plan_csv, newline="", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
@@ -945,7 +944,6 @@ def check_icloud_status(path: str) -> str:
         if os.path.getsize(path) == 0:
             # Could be iCloud placeholder or truly empty file
             # Check if the file has the iCloud extended attribute
-            import subprocess
             result = subprocess.run(
                 ["xattr", "-p", "com.apple.iCloud.syncState", path],
                 capture_output=True, text=True, timeout=5
@@ -965,7 +963,6 @@ def download_icloud_file(path: str) -> bool:
     Returns True if download was triggered, False otherwise.
     """
     try:
-        import subprocess
         result = subprocess.run(
             ["brctl", "download", path],
             capture_output=True, text=True, timeout=10
@@ -1297,7 +1294,6 @@ def main() -> None:
 
     # Pass prefer_album into prefs for strategy use
     if prefer_album:
-        existing = prefs.get("prefer_folders", [])
         # Map album names to folder_tag values so they work with --strategy folder
         prefs["prefer_albums"] = prefer_album
 
@@ -1389,8 +1385,7 @@ def main() -> None:
                 f.write(report_html)
             print(f"   📊 Report: {report_path}")
             # Open report in browser
-            import subprocess as _sp
-            _sp.Popen(["open", report_path])
+            subprocess.Popen(["open", report_path])
         except Exception as e:
             print(f"   ⚠️  Could not generate report: {e}")
 
@@ -1425,7 +1420,6 @@ def main() -> None:
             f.write(html_content)
         print(f"  🖼️  Thumbnail preview: {preview_path}")
         # Open preview in browser
-        import subprocess
         subprocess.Popen(["open", preview_path])
     except Exception as e:
         print(f"  ⚠️  Could not generate thumbnail preview: {e}")
