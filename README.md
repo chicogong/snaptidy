@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.10-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.11-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
 ## Table of Contents
 
 - [Why SnapTidy?](#why-snaptidy)
-- [What's New](#whats-new-in-v38)
+- [What's New](#whats-new-in-v311)
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
@@ -36,6 +36,17 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 **iPhone users**: You don't need iCloud sync to organize your photos. Connect your iPhone via USB and SnapTidy can scan the Photos.app library directly, or use Finder to sync photos to a local folder first. Tools like [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) also allow direct USB access to your iPhone's DCIM without iCloud.
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
+
+## What's New in v3.11
+
+| Feature | Description |
+|---------|-------------|
+| 🏗️ **Unified Extension Definitions** | All format sets consolidated in `constants.py`; added AVIF, WebM, MTS, ORF, RW2, etc.; dot-prefixed variants for direct suffix comparison |
+| ⚡ **Parallel Scanning** | `scan_photos.py --parallel 4` — 2.9x faster; `assess_quality.py --parallel 4` — thread-pool quality assessment |
+| 🔄 **Incremental Scanning** | `scan_photos.py --incremental` — skip unchanged files; second run 35x faster (0.1s vs 3.4s) |
+| 🚀 **pHash Performance** | Prefix-index optimization replaces O(n²) pairwise comparison; scales to 50K+ photo libraries |
+| 🗜️ **Photo Compression** | `compress_photos.py` — Smart JPEG quality by resolution tier; PNG→JPEG conversion; dry-run preview; backup safety |
+| 📅 **Timeline Gap Detection** | `timeline_gaps.py` — Find abnormal date gaps indicating missing photos; adaptive threshold; severity classification |
 
 ## What's New in v3.10
 
@@ -668,6 +679,8 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `fix_dates.py` | Fix missing EXIF dates from filename/neighbors/mtime | `.db` index | DB columns + `.csv` report |
 | `verify_backup.py` | Verify backup completeness (quick or SHA-256 full) | Source + backup dirs | `.csv` report + coverage % |
 | `find_duplicate_folders.py` | Find duplicate/similar folders by content hash | `.db` index or directory | `.csv` report |
+| `compress_photos.py` | Smart photo compression (resolution-based quality, PNG→JPEG) | `.db` index | Compressed files + `.csv` report |
+| `timeline_gaps.py` | Detect abnormal date gaps (missing photo periods) | `.db` index | `.csv` report + terminal summary |
 | `generate_album_report.py` | HTML album organization report (before/after diff) | `.db` index + stats | `album_report.html` |
 | `library_stats.py` | Library health & insights + **space what-if analysis** | `.db` index | terminal / JSON / `health.html` |
 | `reverse_geocode.py` | GPS → place names (city/region/country) | Lat/lon coordinates | Place name text |

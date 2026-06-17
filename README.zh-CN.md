@@ -6,7 +6,7 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.10-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.11-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
 
@@ -36,6 +36,17 @@
 **iPhone 用户**：整理照片不需要 iCloud 同步到电脑。通过 USB 连接 iPhone，SnapTidy 可以直接扫描 Photos.app 图库，或者先用 Finder 将照片同步到本地文件夹。使用 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 等工具还可以直接通过 USB 访问 iPhone 的 DCIM 目录，无需 iCloud。
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
+
+## v3.11 新功能
+
+| 功能 | 说明 |
+|------|------|
+| 🏗️ **统一扩展名定义** | 所有格式集合归入 `constants.py`；新增 AVIF、WebM、MTS、ORF、RW2 等；点号前缀变体用于直接后缀比较 |
+| ⚡ **并行扫描** | `scan_photos.py --parallel 4` — 2.9 倍提速；`assess_quality.py --parallel 4` — 线程池质量评估 |
+| 🔄 **增量扫描** | `scan_photos.py --incremental` — 跳过未变文件；二次运行快 35 倍（0.1s vs 3.4s） |
+| 🚀 **pHash 性能优化** | 前缀索引预过滤取代 O(n²) 两两比较；支持 5 万+ 照片库 |
+| 🗜️ **照片压缩** | `compress_photos.py` — 按分辨率分层智能 JPEG 压缩；PNG→JPEG 转换；预览模式；安全备份 |
+| 📅 **时间线空白检测** | `timeline_gaps.py` — 检测异常日期空白（可能丢失照片）；自适应阈值；严重程度分类 |
 
 ## v3.10 新功能
 
