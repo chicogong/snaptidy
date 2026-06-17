@@ -1,9 +1,9 @@
 ---
 name: snaptidy
-version: 3.6.0
+version: 3.7.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, create albums in Photos.app, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -26,9 +26,9 @@ metadata:
 
 ## When to Use
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**.
+Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**.
 
-**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册
+**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats
 
 ## Safety Rules — MANDATORY
 
@@ -155,6 +155,28 @@ Report is saved to `{output_dir}/reports/album_report.html` and auto-opened in b
 
 Works with `--dry-run` too — preview what *would* change before executing.
 
+## Library Health & Insights — Read-Only Stats
+
+Get an at-a-glance health report of any scanned library — **never modifies anything**:
+
+```bash
+# Terminal report (totals, category/format/year breakdown, health flags, top space hogs)
+python3 scripts/library_stats.py --index photo_index.db
+
+# Also write a self-contained HTML report
+python3 scripts/library_stats.py -i photo_index.db --report health.html
+
+# Machine-readable JSON (for piping into other tools)
+python3 scripts/library_stats.py -i photo_index.db --format json
+
+# Or via the orchestrator (scans first, then reports, auto-opens HTML)
+python3 scripts/organize_photos.py --source ~/Pictures/Export --mode stats
+```
+
+Surfaces: total items/size/date span · category & format & year distribution ·
+health flags (screenshots, no-EXIF, GPS/privacy, iCloud-only, possibly-blurry
+via Apple sharp score, favorites) · top-10 space consumers.
+
 ## Output Directory Structure
 
 ```
@@ -167,10 +189,27 @@ snaptidy_output/          # Default output (--output-dir)
 │   └── plan_manifest.json
 ├── reports/              # HTML reports
 │   ├── album_report.html # Album organization report
+│   ├── library_health.html # Library health & insights (--mode stats)
 │   └── preview.html      # Duplicate thumbnail preview
 └── logs/                 # Execution logs
     └── move_log.csv      # Applied move log
 ```
+
+## Shared Modules (internal)
+
+Common logic lives in three importable modules (single source of truth — no duplication):
+
+- `scripts/photo_metadata.py` — SHA-256, pHash, EXIF (datetime/GPS/camera/subsec), image size, aspect ratio + optional-dependency flags
+- `scripts/constants.py` — extension sets, format-family mapping, Core Data epoch, month names, album-name maps, `format_size`
+- `scripts/applescript_utils.py` — AppleScript string escaping + `osascript` invocation
+
+## CLI Conventions
+
+Flags are standardized across all scripts (old names kept as aliases):
+
+- `--source` (`--input` / `--library`, `-i` for folders) — photo source
+- `--index` (`-i`) — SQLite metadata index (consumed by dedup/report tools)
+- `--output` (`-o`, also `--report` for HTML producers) — output path
 
 ## Photos.app "Recently Deleted" — Safe Cleanup
 

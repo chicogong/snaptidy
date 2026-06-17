@@ -24,6 +24,9 @@ import sys
 import time
 from datetime import datetime
 
+# Shared AppleScript escaping (single source of truth)
+from applescript_utils import escape_applescript as _escape_applescript
+
 
 # ---------------------------------------------------------------------------
 # Automation permission management for Photos.app
@@ -193,16 +196,6 @@ def ensure_photos_permission() -> bool:
 # ---------------------------------------------------------------------------
 # File operations
 # ---------------------------------------------------------------------------
-
-def _escape_applescript(text: str) -> str:
-    """Escape a string for safe interpolation into an AppleScript string literal.
-
-    Backslashes must be escaped first, then double quotes.  Without this,
-    file paths containing quotes or backslashes break the script or allow
-    AppleScript injection.
-    """
-    return text.replace("\\", "\\\\").replace('"', '\\"')
-
 
 def move_to_trash(path: str) -> tuple:
     """Move a file to macOS Trash using osascript (Finder).  Returns (success, message)."""

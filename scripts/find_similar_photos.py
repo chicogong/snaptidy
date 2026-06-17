@@ -1305,8 +1305,8 @@ def write_human(entries, output_path, index_path: str = ""):
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Find similar images: pHash, scaled duplicates, cross-format duplicates")
-    parser.add_argument("--index", required=True, help="Path to metadata index (.db or .csv)")
-    parser.add_argument("--output", required=True, help="Path to output CSV for similar images")
+    parser.add_argument("--index", "-i", dest="index", required=True, help="Path to metadata index (.db or .csv)")
+    parser.add_argument("--output", "-o", dest="output", required=True, help="Path to output CSV for similar images")
     parser.add_argument("--format", choices=["csv", "human"], default="csv",
                         help="Output format: csv (default) or human (readable report)")
     parser.add_argument("--threshold", type=int, default=0,

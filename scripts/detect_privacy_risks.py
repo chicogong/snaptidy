@@ -365,9 +365,9 @@ def write_csv_report(findings: list, output_path: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Detect privacy-sensitive images in your photo library")
-    parser.add_argument("--index", required=True,
+    parser.add_argument("--index", "-i", dest="index", required=True,
                         help="Path to SQLite metadata index (from scan_photos.py)")
-    parser.add_argument("--output", required=True,
+    parser.add_argument("--output", "-o", dest="output", required=True,
                         help="Output path (.json, .csv, or .txt for human-readable)")
     parser.add_argument("--format", choices=["auto", "json", "csv", "human"],
                         default="auto",

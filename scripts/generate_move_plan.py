@@ -368,9 +368,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate smart move plan for duplicates with priority rules")
     parser.add_argument("--duplicates", required=True, help="Path to duplicates CSV")
-    parser.add_argument("--index", default="",
+    parser.add_argument("--index", "-i", dest="index", default="",
                         help="Path to metadata index (.db or .csv) for smart scoring")
-    parser.add_argument("--plan", required=True, help="Path to output move plan CSV")
+    parser.add_argument("--plan", "-o", dest="plan", required=True, help="Path to output move plan CSV")
     parser.add_argument("--target-root", required=True, help="Root of your photo archive")
     parser.add_argument("--strategy", choices=["quality", "oldest", "newest", "folder"],
                         default="quality",

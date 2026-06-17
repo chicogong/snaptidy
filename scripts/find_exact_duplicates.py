@@ -15,6 +15,8 @@ import os
 import sqlite3
 import sys
 
+from constants import format_size
+
 
 def find_duplicates_db(index_path: str) -> tuple:
     """Find duplicates from SQLite database (fast, indexed).
@@ -84,17 +86,6 @@ def write_duplicates(dups: list, output_path: str) -> None:
             writer.writerow(entry)
 
 
-def format_size(size_bytes: int) -> str:
-    """Format bytes to human-readable string."""
-    if size_bytes >= 1_073_741_824:
-        return f"{size_bytes / 1_073_741_824:.1f} GB"
-    elif size_bytes >= 1_048_576:
-        return f"{size_bytes / 1_048_576:.1f} MB"
-    elif size_bytes >= 1_024:
-        return f"{size_bytes / 1_024:.1f} KB"
-    return f"{size_bytes} B"
-
-
 def write_human(dups: list, output_path: str, group_meta: dict = None) -> None:
     """Write human-readable duplicate report."""
     group_meta = group_meta or {}
@@ -149,8 +140,8 @@ def write_human(dups: list, output_path: str, group_meta: dict = None) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Find exact duplicate files by SHA‑256")
-    parser.add_argument("--index", required=True, help="Path to metadata index (.db or .csv)")
-    parser.add_argument("--output", required=True, help="Path to output duplicates CSV")
+    parser.add_argument("--index", "-i", dest="index", required=True, help="Path to metadata index (.db or .csv)")
+    parser.add_argument("--output", "-o", dest="output", required=True, help="Path to output duplicates CSV")
     parser.add_argument("--format", choices=["csv", "human"], default="csv",
                         help="Output format: csv (default) or human (readable report)")
     args = parser.parse_args()

@@ -31,48 +31,20 @@ The script intentionally does not modify any files; it only reads metadata.
 
 import argparse
 import csv
-import hashlib
 import json
 import os
 import sqlite3
 import sys
 from datetime import datetime
 
-try:
-    from PIL import Image
-    PILLOW_AVAILABLE = True
-except ImportError:
-    PILLOW_AVAILABLE = False
-
-try:
-    import piexif
-    PIEXIF_AVAILABLE = True
-except ImportError:
-    PIEXIF_AVAILABLE = False
-
-try:
-    import imagehash
-    IMAGEHASH_AVAILABLE = True
-except ImportError:
-    IMAGEHASH_AVAILABLE = False
-
-# Optional HEIC/HEIF support via pillow-heif
-try:
-    from pillow_heif import register_heif_opener
-    register_heif_opener()
-    HEIC_SUPPORT = True
-except ImportError:
-    HEIC_SUPPORT = False
-
-
-IMAGE_EXTS = {
-    "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif",
-    "webp", "dng", "cr2", "nef", "arw",  # RAW formats
-}
-VIDEO_EXTS = {
-    "mov", "mp4", "m4v", "avi", "mkv", "3gp", "mpg", "mpeg",
-    "hevc", "wmv", "flv",
-}
+# Shared metadata helpers + optional-dependency flags (single source of truth)
+from photo_metadata import (
+    PILLOW_AVAILABLE, PIEXIF_AVAILABLE, IMAGEHASH_AVAILABLE, HEIC_SUPPORT,
+    compute_sha256, get_exif_datetime, get_gps_coords, get_camera_info,
+    has_exif_data, compute_phash, get_image_size, get_subsec_time,
+    compute_aspect_ratio,
+)
+from constants import IMAGE_EXTS, VIDEO_EXTS, get_format_family
 
 # Skip patterns for directories
 SKIP_DIR_SUFFIXES = {
@@ -144,139 +116,6 @@ BURST_PATTERNS = [
 ]
 
 
-def compute_sha256(path: str) -> str:
-    """Compute the SHA‑256 hash of a file in chunks."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def get_exif_datetime(path: str) -> str:
-    """Extract DateTimeOriginal from EXIF data if present.  Returns ISO string or ''."""
-    if not PIEXIF_AVAILABLE:
-        return ""
-    try:
-        exif_dict = piexif.load(path)
-        dt = exif_dict.get("Exif", {}).get(piexif.ExifIFD.DateTimeOriginal)
-        if not dt:
-            # Fallback to Image DateTime
-            dt = exif_dict.get("0th", {}).get(piexif.ImageIFD.DateTime)
-        if dt:
-            if isinstance(dt, bytes):
-                dt = dt.decode(errors="ignore")
-            dt_str = dt.replace("\x00", "").strip()
-            if len(dt_str) >= 19:
-                try:
-                    dt_obj = datetime.strptime(dt_str[:19], "%Y:%m:%d %H:%M:%S")
-                    return dt_obj.isoformat()
-                except Exception:
-                    pass
-    except Exception:
-        return ""
-    return ""
-
-
-def get_gps_coords(path: str) -> tuple:
-    """Extract GPS latitude/longitude from EXIF.  Returns (lat, lon) or ('', '')."""
-    if not PIEXIF_AVAILABLE:
-        return "", ""
-    try:
-        exif_dict = piexif.load(path)
-        gps_ifd = exif_dict.get("GPS", {})
-        if not gps_ifd:
-            return "", ""
-
-        def _convert_to_degrees(value):
-            """Convert GPS coordinates (degrees, minutes, seconds) to decimal."""
-            if not value or len(value) < 3:
-                return None
-            d = float(value[0][0]) / float(value[0][1]) if value[0][1] != 0 else 0
-            m = float(value[1][0]) / float(value[1][1]) if value[1][1] != 0 else 0
-            s = float(value[2][0]) / float(value[2][1]) if value[2][1] != 0 else 0
-            return d + m / 60.0 + s / 3600.0
-
-        lat_val = gps_ifd.get(piexif.GPSIFD.GPSLatitude)
-        lat_ref = gps_ifd.get(piexif.GPSIFD.GPSLatitudeRef)
-        lon_val = gps_ifd.get(piexif.GPSIFD.GPSLongitude)
-        lon_ref = gps_ifd.get(piexif.GPSIFD.GPSLongitudeRef)
-
-        lat = _convert_to_degrees(lat_val)
-        lon = _convert_to_degrees(lon_val)
-
-        if lat is not None and lon is not None:
-            if isinstance(lat_ref, bytes):
-                lat_ref = lat_ref.decode(errors="ignore")
-            if isinstance(lon_ref, bytes):
-                lon_ref = lon_ref.decode(errors="ignore")
-            if lat_ref == "S":
-                lat = -lat
-            if lon_ref == "W":
-                lon = -lon
-            return round(lat, 6), round(lon, 6)
-    except Exception:
-        pass
-    return "", ""
-
-
-def get_camera_info(path: str) -> tuple:
-    """Extract camera make/model from EXIF.  Returns (make, model) or ('', '')."""
-    if not PIEXIF_AVAILABLE:
-        return "", ""
-    try:
-        exif_dict = piexif.load(path)
-        zeroth = exif_dict.get("0th", {})
-        make = zeroth.get(piexif.ImageIFD.Make, "")
-        model = zeroth.get(piexif.ImageIFD.Model, "")
-        if isinstance(make, bytes):
-            make = make.decode(errors="ignore").strip()
-        if isinstance(model, bytes):
-            model = model.decode(errors="ignore").strip()
-        return make, model
-    except Exception:
-        return "", ""
-
-
-def has_exif_data(path: str) -> bool:
-    """Check if the file has meaningful EXIF data (beyond just file stats)."""
-    if not PIEXIF_AVAILABLE:
-        return False
-    try:
-        exif_dict = piexif.load(path)
-        # Check for any of: exposure, GPS, actual camera info
-        has_exif_section = bool(exif_dict.get("Exif"))
-        has_gps = bool(exif_dict.get("GPS"))
-        zeroth = exif_dict.get("0th", {})
-        has_camera = bool(zeroth.get(piexif.ImageIFD.Make)) or bool(zeroth.get(piexif.ImageIFD.Model))
-        return has_exif_section or has_gps or has_camera
-    except Exception:
-        return False
-
-
-def compute_phash(path: str) -> str:
-    """Compute perceptual hash for an image.  Returns hex string or '' on error."""
-    if not PILLOW_AVAILABLE or not IMAGEHASH_AVAILABLE:
-        return ""
-    try:
-        with Image.open(path) as img:
-            ph = imagehash.average_hash(img.convert("RGB"))
-            return str(ph)
-    except Exception:
-        return ""
-
-
-def get_image_size(path: str) -> tuple:
-    """Return (width, height) of an image or ('', '') on failure."""
-    if not PILLOW_AVAILABLE:
-        return "", ""
-    try:
-        with Image.open(path) as img:
-            return img.width, img.height
-    except Exception:
-        return "", ""
-
-
 def detect_category(name: str, ext: str) -> str:
     """Auto-detect photo category based on filename and extension."""
     name_lower = name.lower()
@@ -320,56 +159,6 @@ def get_folder_tag(full_path: str, scan_root: str) -> str:
         if len(parts) > 1:
             return parts[0]
     except Exception:
-        pass
-    return ""
-
-
-def get_subsec_time(path: str) -> str:
-    """Extract SubSecTimeOriginal from EXIF.  Returns string or ''."""
-    if not PIEXIF_AVAILABLE:
-        return ""
-    try:
-        exif_dict = piexif.load(path)
-        subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTimeOriginal)
-        if not subsec:
-            # Fallback to SubSecTime (not "Original")
-            subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTime)
-        if subsec:
-            if isinstance(subsec, bytes):
-                subsec = subsec.decode(errors="ignore")
-            return str(subsec).strip().rstrip("\x00")
-    except Exception:
-        pass
-    return ""
-
-
-def get_format_family(ext: str) -> str:
-    """Group file extension into format family for cross-format dedup."""
-    ext_lower = ext.lower()
-    if ext_lower in ("jpg", "jpeg"):
-        return "jpeg"
-    elif ext_lower in ("heic", "heif"):
-        return "heic"
-    elif ext_lower == "png":
-        return "png"
-    elif ext_lower in ("tif", "tiff"):
-        return "tiff"
-    elif ext_lower in ("dng", "cr2", "nef", "arw"):
-        return "raw"
-    elif ext_lower == "webp":
-        return "webp"
-    else:
-        return "other"
-
-
-def compute_aspect_ratio(width, height) -> str:
-    """Compute width/height ratio rounded to 3 decimal places."""
-    try:
-        w = int(width)
-        h = int(height)
-        if w > 0 and h > 0:
-            return f"{w / h:.3f}"
-    except (ValueError, TypeError):
         pass
     return ""
 
@@ -645,13 +434,15 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(
         description="Scan photos/videos and build metadata index (SQLite or CSV)")
-    parser.add_argument("--input", required=True, help="Directory to scan")
-    parser.add_argument("--output", required=True, help="Output path (.db for SQLite, .csv for CSV)")
+    parser.add_argument("--source", "--input", "-i", dest="source", required=True,
+                        help="Directory to scan (alias: --input)")
+    parser.add_argument("--output", "-o", dest="output", required=True,
+                        help="Output index path (.db for SQLite, .csv for CSV)")
     parser.add_argument("--format", choices=["auto", "db", "csv"], default="auto",
                         help="Output format (default: auto-detect from file extension)")
     args = parser.parse_args()
 
-    input_dir = os.path.abspath(args.input)
+    input_dir = os.path.abspath(args.source)
     output_path = os.path.abspath(args.output)
 
     if not os.path.isdir(input_dir):

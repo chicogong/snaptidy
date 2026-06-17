@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-06-17
+
+### Added
+- **Library health & insights** (`library_stats.py`) — read-only report with
+  totals, category/format/year breakdowns, health flags (screenshots, no-EXIF,
+  GPS/privacy, iCloud-only, possibly-blurry, favorites) and top space consumers.
+  Three outputs: terminal, `--format json`, `--report` HTML. Also wired as
+  `organize_photos.py --mode stats`.
+- HTML before/after diff report for `--mode photos-album` (new/changed/unchanged
+  albums with photo-count deltas), works under `--dry-run` too.
+- Organized output directory structure: `scan/`, `plans/`, `reports/`, `logs/`.
+
+### Changed
+- **Refactor: extracted shared modules** eliminating ~600 lines of duplication —
+  `photo_metadata.py` (hashing/EXIF/pHash/size), `constants.py`
+  (extensions/format-family/epoch/month-names/album-maps/`format_size`),
+  `applescript_utils.py` (escaping + osascript).
+- **Standardized CLI flags** across all scripts (backward-compatible aliases):
+  `--source` canonical for photo source (was `--input`/`--library`); `--index`
+  (`-i`) for the index DB; `--output` (`-o`, also `--report`) for outputs.
+
+### Fixed
+- Album separator contract: `scan_photos_library.py` wrote `"; "` but every
+  consumer split on `","` — broke `--prefer-album`/`--album-filter` for
+  multi-album photos. Unified to `,`.
+- `import_to_photos.py` share workflow: Python f-string referenced an
+  AppleScript variable (`thePhotos`) → `NameError`. Fixed to AppleScript.
+- `apply_move_plan.move_to_trash()` interpolated paths into AppleScript without
+  escaping (injection risk) — now uses shared `escape_applescript()`.
+- Album name emoji drift between organizer (`🎬`) and report (`📹`) — unified
+  via shared `constants.CATEGORY_ALBUM_NAMES`.
+- `--dry-run` album report showed 0 photos / empty diff — now populates
+  `added`/`existed` details and simulates before/after album state.
+- HTML report paths now absolute so the browser reliably opens them.
+
 ## [3.3.0] - 2026-06-15
 
 ### Added

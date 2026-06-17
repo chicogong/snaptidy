@@ -37,7 +37,18 @@
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
 
-## v3.4 新功能
+## v3.7 新功能
+
+| 功能 | 说明 |
+|------|------|
+| 📊 **照片库健康与洞察** | 新增只读 `library_stats.py`（及 `--mode stats`）— 总量、类别/格式/年度分布、健康指标（截图、无 EXIF、GPS、仅 iCloud、可能模糊、收藏）、占空间最大文件。支持终端 / JSON / HTML 输出 |
+| 🧩 **公共模块重构** | 抽取 `photo_metadata.py`、`constants.py`、`applescript_utils.py` — 消除约 600 行重复的 EXIF/哈希/格式代码（单一真相源） |
+| 🎛️ **CLI 标准化** | 统一所有脚本参数 — `--source` / `--index`（`-i`）/ `--output`（`-o`），旧的 `--input`/`--library` 作为向后兼容别名保留 |
+| 🔁 **前后对比报告** | `--mode photos-album` 的 HTML 报告新增新建/变更/未变相册及照片数量增量对比（支持 `--dry-run`） |
+| 🐛 **关键 Bug 修复** | 相册分隔符契约、回收站 AppleScript 注入、共享流程 NameError、整理器与报告间 emoji 不一致 |
+
+<details>
+<summary>v3.4</summary>
 
 | 功能 | 说明 |
 |------|------|
@@ -46,6 +57,8 @@
 | 👥 **半自动共享相册** | `--share-to-album` 标记并选中照片，你只需拖到共享相册（1 步操作） |
 | 📚 **精简 SKILL.md** | SKILL.md 缩减至 ≤65 行，详情移至 `references/` 目录（检测、导入、性能、优先级规则、故障排除） |
 | 🔧 **Union-Find 分组** | Apple QL 检测使用 union-find 算法，正确处理传递性相似分组 |
+
+</details>
 
 <details>
 <summary>v3.3</summary>
@@ -165,10 +178,14 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 
 ```bash
 # 第 1 步：扫描（大型图库推荐 SQLite）
-python3 scripts/scan_photos.py --input /path/to/your/photos --output ./photo_index.db
+python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db
 
 # 第 1b 步：快速扫描（零安装，无需任何依赖）
-python3 scripts/quick_scan.py --input /path/to/your/photos --output ./photo_index.db --dedup
+python3 scripts/quick_scan.py --source /path/to/your/photos --output ./photo_index.db --dedup
+
+# 第 1c 步（可选）：照片库健康与洞察（只读）
+python3 scripts/library_stats.py --index ./photo_index.db
+python3 scripts/library_stats.py -i ./photo_index.db --report ./health.html
 
 # 第 2 步：查找精确重复
 python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./duplicates_exact.csv
@@ -308,6 +325,9 @@ python3 scripts/organize_photos.py --source /any --detect-sources
 | `organize_photos.py` | 一键交互式流程 | 来源目录 | 完整流程输出 |
 | `import_to_photos.py` | 导入 Photos.app 并去重 | 来源目录 | 导入报告 JSON |
 | `generate_preview.py` | HTML 缩略图预览 | 重复 CSV + 索引 | `preview.html` |
+| `generate_album_report.py` | HTML 相册整理报告（前后对比） | `.db` 索引 + 统计 | `album_report.html` |
+| `library_stats.py` | 照片库健康与洞察（只读） | `.db` 索引 | 终端 / JSON / `health.html` |
+| `photo_metadata.py` · `constants.py` · `applescript_utils.py` | 公共内部模块（哈希/EXIF、常量、AppleScript） | — | — |
 
 ## 依赖
 

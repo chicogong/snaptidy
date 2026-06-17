@@ -34,6 +34,9 @@ from find_similar_photos import (
 )
 from generate_move_plan import generate_plan, read_duplicates, load_metadata_db
 
+# Shared constants/helpers (single source of truth)
+from constants import MONTH_NAMES, format_size as format_bytes
+
 
 # ---------------------------------------------------------------------------
 # User preference collection
@@ -45,6 +48,7 @@ ORGANIZE_MODES = {
     "by-location": "Organize photos by GPS location",
     "by-category": "Organize by category (screenshots, WeChat, bursts, etc.)",
     "photos-album": "Organize photos into albums in Photos.app (by date/category/format)",
+    "stats": "Show library health & insights (read-only, no changes)",
 }
 
 DEDUP_METHODS = {
@@ -437,31 +441,10 @@ ALBUM_ORGANIZE_MODES = {
     "smart": "Create albums by year/category (e.g., '2026/📸 Photos', '2026/📱 Screenshots')",
 }
 
-# Category → album name mapping (with emoji prefix for visual distinction)
-# This is the single source of truth — generate_album_report.py imports it.
-CATEGORY_ALBUM_NAMES = {
-    "photo": "📸 Photos",
-    "screenshot": "📱 Screenshots",
-    "wechat": "💬 WeChat",
-    "burst": "🔄 Burst",
-    "video": "🎬 Videos",
-    "live_photo": "🎵 Live Photos",
-}
+# Album name maps now live in constants.py (single source of truth, shared
+# with generate_album_report.py).  Re-exported here for backward compat.
+from constants import CATEGORY_ALBUM_NAMES, FORMAT_ALBUM_NAMES
 
-# Format → album name mapping
-FORMAT_ALBUM_NAMES = {
-    "jpeg": "JPEG",
-    "heic": "HEIC",
-    "heif": "HEIF",
-    "png": "PNG",
-    "gif": "GIF",
-    "tiff": "TIFF",
-    "raw": "RAW",
-    "bmp": "BMP",
-    "webp": "WebP",
-    "avif": "AVIF",
-    "other": "Other",
-}
 
 
 def _photos_album_exists(album_name: str) -> bool:
@@ -678,12 +661,7 @@ def organize_photos_albums(index_db: str, organize_by: str = "date",
                             album_name = "📅 No Date"
                             groups.setdefault(album_name, []).append(uuid_part)
                             continue
-                    month_names = {
-                        1: "January", 2: "February", 3: "March", 4: "April",
-                        5: "May", 6: "June", 7: "July", 8: "August",
-                        9: "September", 10: "October", 11: "November", 12: "December",
-                    }
-                    album_name = f"{parsed.year:04d}/{parsed.month:02d} – {month_names.get(parsed.month, '')}"
+                    album_name = f"{parsed.year:04d}/{parsed.month:02d} – {MONTH_NAMES.get(parsed.month, '')}"
                 except Exception:
                     album_name = "📅 No Date"
 
@@ -841,17 +819,6 @@ def show_preview(index_db: str, plan_csv: str) -> dict:
 
     conn.close()
     return stats
-
-
-def format_bytes(n: int) -> str:
-    """Format bytes to human-readable string."""
-    if n >= 1_073_741_824:
-        return f"{n / 1_073_741_824:.1f} GB"
-    elif n >= 1_048_576:
-        return f"{n / 1_048_576:.1f} MB"
-    elif n >= 1_024:
-        return f"{n / 1_024:.1f} KB"
-    return f"{n} bytes"
 
 
 def generate_manifest(prefs: dict, plan_csv: str, stats: dict, manifest_path: str) -> None:
@@ -1300,11 +1267,25 @@ def main() -> None:
     # Step 2-5: Route by organize mode
     mode = prefs.get("mode", "dedup")
 
-    if mode == "dedup":
-        # Dedup mode: detect duplicates → plan → confirm → apply
+    if mode == "stats":
+        # Read-only library health & insights — no changes made.
         print()
-        print("🔍 Step 2/5: Detecting duplicates...")
-        has_duplicates = run_detect(prefs, index_db, duplicates_csv)
+        print("📊 Library health & insights (read-only)...")
+        from library_stats import collect_stats, print_terminal, build_html
+        lib_stats = collect_stats(index_db)
+        print_terminal(lib_stats)
+        report_path = os.path.abspath(os.path.join(report_dir, "library_health.html"))
+        try:
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
+            with open(report_path, "w", encoding="utf-8") as fh:
+                fh.write(build_html(lib_stats))
+            print(f"  📄 HTML report: {report_path}")
+            subprocess.Popen(["open", report_path])
+        except Exception as e:
+            print(f"  ⚠️  Could not write HTML report: {e}")
+        return
+
+    if mode == "dedup":
 
         if not has_duplicates:
             print()

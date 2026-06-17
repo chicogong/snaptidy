@@ -29,7 +29,6 @@ LIMITATIONS:
 """
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
@@ -39,6 +38,11 @@ import subprocess
 import sys
 from collections import defaultdict
 from datetime import datetime, timedelta
+
+# Shared helpers (single source of truth)
+from constants import IMAGE_EXTS, VIDEO_EXTS, CORE_DATA_EPOCH
+from photo_metadata import compute_sha256
+from applescript_utils import escape_applescript as _escape_applescript
 
 # Optional: photoscript for high-level Photos.app control
 try:
@@ -55,20 +59,9 @@ try:
 except ImportError:
     PYOBJC_AVAILABLE = False
 
-# Core Data epoch: 2001-01-01 00:00:00 UTC
-CORE_DATA_EPOCH = datetime(2001, 1, 1)
-
 # Checkpoint file for resume support
 CHECKPOINT_FILENAME = "import_checkpoint.json"
 
-IMAGE_EXTS = {
-    "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif",
-    "webp", "dng", "cr2", "nef", "arw",
-}
-VIDEO_EXTS = {
-    "mov", "mp4", "m4v", "avi", "mkv", "3gp", "mpg", "mpeg",
-    "hevc", "wmv", "flv",
-}
 MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
 
 # Android / external drive DCIM patterns
@@ -77,18 +70,6 @@ ANDROID_MFR_DIRS = {
     "samsung", "galaxy", "pixel", "oneplus", "xiaomi", "huawei",
     "oppo", "vivo", "honor", "sony", "lg", "motorola", "htc",
 }
-
-
-def compute_sha256(path: str) -> str:
-    """Compute SHA-256 of a file."""
-    h = hashlib.sha256()
-    try:
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        return h.hexdigest()
-    except Exception:
-        return ""
 
 
 def detect_external_sources() -> list:
@@ -460,11 +441,6 @@ def import_via_photoscript(file_paths: list, album_name: str = None,
 
     except Exception as e:
         return 0, len(file_paths), [], [f"photoscript error: {e}"]
-
-
-def _escape_applescript(s: str) -> str:
-    """Escape a string for safe embedding in AppleScript double-quoted strings."""
-    return s.replace("\\", "\\\\").replace('"', '\\"')
 
 
 def import_via_osascript(file_paths: list, album_name: str = None,

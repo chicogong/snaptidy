@@ -24,6 +24,8 @@ import sqlite3
 from collections import defaultdict
 from datetime import datetime
 
+from constants import MONTH_NAMES, format_size
+
 
 # Album name emojis by category
 CATEGORY_ICONS = {
@@ -36,23 +38,6 @@ CATEGORY_ICONS = {
     "📁 Other": "📁",
     "📅 No Date": "📅",
 }
-
-MONTH_NAMES = {
-    1: "January", 2: "February", 3: "March", 4: "April",
-    5: "May", 6: "June", 7: "July", 8: "August",
-    9: "September", 10: "October", 11: "November", 12: "December",
-}
-
-
-def format_size(n: int) -> str:
-    """Format bytes to human-readable."""
-    if n >= 1_073_741_824:
-        return f"{n / 1_073_741_824:.1f} GB"
-    elif n >= 1_048_576:
-        return f"{n / 1_048_576:.1f} MB"
-    elif n >= 1_024:
-        return f"{n / 1_024:.1f} KB"
-    return f"{n} B"
 
 
 def get_thumbnail_base64(path: str, max_size: int = 160) -> str:
@@ -209,22 +194,9 @@ def generate_album_report_html(
     )
     rows = list(cursor)
 
-    # Category / format label mapping — reuse organize_photos.py as the
-    # single source of truth so album names stay identical between the
-    # organizer and this report (avoids emoji/label drift).
-    try:
-        from organize_photos import CATEGORY_ALBUM_NAMES, FORMAT_ALBUM_NAMES
-    except Exception:
-        CATEGORY_ALBUM_NAMES = {
-            "photo": "📸 Photos", "screenshot": "📱 Screenshots",
-            "burst": "🔄 Burst", "wechat": "💬 WeChat",
-            "video": "🎬 Videos", "live_photo": "🎵 Live Photos",
-        }
-        FORMAT_ALBUM_NAMES = {
-            "jpeg": "JPEG", "heic": "HEIC", "heif": "HEIF",
-            "png": "PNG", "gif": "GIF", "tiff": "TIFF",
-            "raw": "RAW", "bmp": "BMP", "webp": "WebP", "avif": "AVIF",
-        }
+    # Category / format label maps come from constants.py (single source of
+    # truth) so album names stay identical between organizer and report.
+    from constants import CATEGORY_ALBUM_NAMES, FORMAT_ALBUM_NAMES
 
     for row in rows:
         filepath = row["file_path"]
@@ -752,8 +724,10 @@ body {{
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate HTML report for Photos.app album organization")
-    parser.add_argument("--index", required=True, help="SQLite metadata index")
-    parser.add_argument("--report", required=True, help="Output HTML file path")
+    parser.add_argument("--index", "-i", dest="index", required=True,
+                        help="SQLite metadata index")
+    parser.add_argument("--report", "--output", "-o", dest="report", required=True,
+                        help="Output HTML file path (alias: --output)")
     parser.add_argument("--organize-by", default="date",
                         choices=["date", "year", "category", "format", "smart"],
                         help="Organization mode")

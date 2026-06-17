@@ -21,43 +21,24 @@ photo file. It only reads metadata.
 """
 
 import argparse
-import hashlib
 import json
 import os
 import shutil
 import sqlite3
 import sys
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 
-try:
-    from PIL import Image
-    PILLOW_AVAILABLE = True
-except ImportError:
-    PILLOW_AVAILABLE = False
-
-try:
-    import piexif
-    PIEXIF_AVAILABLE = True
-except ImportError:
-    PIEXIF_AVAILABLE = False
-
-try:
-    import imagehash
-    IMAGEHASH_AVAILABLE = True
-except ImportError:
-    IMAGEHASH_AVAILABLE = False
-
-# Optional HEIC support
-try:
-    from pillow_heif import register_heif_opener
-    register_heif_opener()
-    HEIC_SUPPORT = True
-except ImportError:
-    HEIC_SUPPORT = False
-
-# Core Data epoch: 2001-01-01 00:00:00 UTC
-CORE_DATA_EPOCH = datetime(2001, 1, 1)
+# Shared metadata helpers + optional-dependency flags (single source of truth)
+from photo_metadata import (
+    PILLOW_AVAILABLE, PIEXIF_AVAILABLE, IMAGEHASH_AVAILABLE, HEIC_SUPPORT,
+    compute_sha256, get_exif_datetime, get_gps_coords, get_camera_info,
+    has_exif_data, compute_phash, get_image_size, get_subsec_time,
+    compute_aspect_ratio,
+)
+from constants import (
+    IMAGE_EXTS, VIDEO_EXTS, CORE_DATA_EPOCH, get_format_family, core_data_to_iso,
+)
 
 # Apple pre-computed ML quality feature keys from ZCOMPUTEDASSETATTRIBUTES
 # These 17 scores are computed by Apple's Vision framework on import,
@@ -81,203 +62,6 @@ APPLE_QUALITY_KEYS = [
     "ZWELLFRAMEDSUBJECTSCORE",
     "ZWELLTIMEDSHOTSCORE",
 ]
-
-IMAGE_EXTS = {
-    "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif",
-    "webp", "dng", "cr2", "nef", "arw",
-}
-VIDEO_EXTS = {
-    "mov", "mp4", "m4v", "avi", "mkv", "3gp", "mpg", "mpeg",
-    "hevc", "wmv", "flv",
-}
-
-
-def core_data_to_iso(timestamp: float) -> str:
-    """Convert Core Data timestamp (seconds since 2001-01-01) to ISO format."""
-    try:
-        dt = CORE_DATA_EPOCH + timedelta(seconds=timestamp)
-        return dt.isoformat()
-    except Exception:
-        return ""
-
-
-def compute_sha256(path: str) -> str:
-    """Compute SHA-256 of a file."""
-    h = hashlib.sha256()
-    try:
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        return h.hexdigest()
-    except Exception:
-        return ""
-
-
-def compute_phash(path: str) -> str:
-    """Compute perceptual hash for an image. Returns '' if imagehash not installed."""
-    if not IMAGEHASH_AVAILABLE or not PILLOW_AVAILABLE:
-        return ""
-    try:
-        with Image.open(path) as img:
-            return str(imagehash.average_hash(img.convert("RGB")))
-    except Exception:
-        return ""
-
-
-def get_image_size(path: str) -> tuple:
-    """Return (width, height) or ('', ''). Returns ('', '') if Pillow not installed."""
-    if not PILLOW_AVAILABLE:
-        return "", ""
-    try:
-        with Image.open(path) as img:
-            return img.width, img.height
-    except Exception:
-        return "", ""
-
-
-def get_exif_datetime(path: str) -> str:
-    """Extract DateTimeOriginal from EXIF. Returns '' if piexif not installed."""
-    if not PIEXIF_AVAILABLE:
-        return ""
-    try:
-        exif_dict = piexif.load(path)
-        dt = exif_dict.get("Exif", {}).get(piexif.ExifIFD.DateTimeOriginal)
-        if not dt:
-            dt = exif_dict.get("0th", {}).get(piexif.ImageIFD.DateTime)
-        if dt:
-            if isinstance(dt, bytes):
-                dt = dt.decode(errors="ignore")
-            dt_str = dt.replace("\x00", "").strip()
-            if len(dt_str) >= 19:
-                try:
-                    dt_obj = datetime.strptime(dt_str[:19], "%Y:%m:%d %H:%M:%S")
-                    return dt_obj.isoformat()
-                except Exception:
-                    pass
-    except Exception:
-        pass
-    return ""
-
-
-def get_subsec_time(path: str) -> str:
-    """Extract SubSecTimeOriginal from EXIF. Returns '' if piexif not installed."""
-    if not PIEXIF_AVAILABLE:
-        return ""
-    try:
-        exif_dict = piexif.load(path)
-        subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTimeOriginal)
-        if not subsec:
-            subsec = exif_dict.get("Exif", {}).get(piexif.ExifIFD.SubSecTime)
-        if subsec:
-            if isinstance(subsec, bytes):
-                subsec = subsec.decode(errors="ignore")
-            return str(subsec).strip().rstrip("\x00")
-    except Exception:
-        pass
-    return ""
-
-
-def get_gps_coords(path: str) -> tuple:
-    """Extract GPS coordinates from EXIF. Returns ('', '') if piexif not installed."""
-    if not PIEXIF_AVAILABLE:
-        return "", ""
-    try:
-        exif_dict = piexif.load(path)
-        gps_ifd = exif_dict.get("GPS", {})
-        if not gps_ifd:
-            return "", ""
-
-        def _convert_to_degrees(value):
-            if not value or len(value) < 3:
-                return None
-            d = float(value[0][0]) / float(value[0][1]) if value[0][1] != 0 else 0
-            m = float(value[1][0]) / float(value[1][1]) if value[1][1] != 0 else 0
-            s = float(value[2][0]) / float(value[2][1]) if value[2][1] != 0 else 0
-            return d + m / 60.0 + s / 3600.0
-
-        lat_val = gps_ifd.get(piexif.GPSIFD.GPSLatitude)
-        lat_ref = gps_ifd.get(piexif.GPSIFD.GPSLatitudeRef)
-        lon_val = gps_ifd.get(piexif.GPSIFD.GPSLongitude)
-        lon_ref = gps_ifd.get(piexif.GPSIFD.GPSLongitudeRef)
-        lat = _convert_to_degrees(lat_val)
-        lon = _convert_to_degrees(lon_val)
-        if lat is not None and lon is not None:
-            if isinstance(lat_ref, bytes):
-                lat_ref = lat_ref.decode(errors="ignore")
-            if isinstance(lon_ref, bytes):
-                lon_ref = lon_ref.decode(errors="ignore")
-            if lat_ref == "S":
-                lat = -lat
-            if lon_ref == "W":
-                lon = -lon
-            return round(lat, 6), round(lon, 6)
-    except Exception:
-        pass
-    return "", ""
-
-
-def get_camera_info(path: str) -> tuple:
-    """Extract camera make/model from EXIF. Returns ('', '') if piexif not installed."""
-    if not PIEXIF_AVAILABLE:
-        return "", ""
-    try:
-        exif_dict = piexif.load(path)
-        zeroth = exif_dict.get("0th", {})
-        make = zeroth.get(piexif.ImageIFD.Make, "")
-        model = zeroth.get(piexif.ImageIFD.Model, "")
-        if isinstance(make, bytes):
-            make = make.decode(errors="ignore").strip()
-        if isinstance(model, bytes):
-            model = model.decode(errors="ignore").strip()
-        return make, model
-    except Exception:
-        return "", ""
-
-
-def has_exif_data(path: str) -> bool:
-    """Check if the file has meaningful EXIF data. Returns False if piexif not installed."""
-    if not PIEXIF_AVAILABLE:
-        return False
-    try:
-        exif_dict = piexif.load(path)
-        has_exif_section = bool(exif_dict.get("Exif"))
-        has_gps = bool(exif_dict.get("GPS"))
-        zeroth = exif_dict.get("0th", {})
-        has_camera = bool(zeroth.get(piexif.ImageIFD.Make)) or bool(zeroth.get(piexif.ImageIFD.Model))
-        return has_exif_section or has_gps or has_camera
-    except Exception:
-        return False
-
-
-def get_format_family(ext: str) -> str:
-    """Group file extension into format family."""
-    ext_lower = ext.lower()
-    if ext_lower in ("jpg", "jpeg"):
-        return "jpeg"
-    elif ext_lower in ("heic", "heif"):
-        return "heic"
-    elif ext_lower == "png":
-        return "png"
-    elif ext_lower in ("tif", "tiff"):
-        return "tiff"
-    elif ext_lower in ("dng", "cr2", "nef", "arw"):
-        return "raw"
-    elif ext_lower == "webp":
-        return "webp"
-    else:
-        return "other"
-
-
-def compute_aspect_ratio(width, height) -> str:
-    """Compute width/height ratio."""
-    try:
-        w = int(width)
-        h = int(height)
-        if w > 0 and h > 0:
-            return f"{w / h:.3f}"
-    except (ValueError, TypeError):
-        pass
-    return ""
 
 
 def _open_output_db(output_path: str) -> sqlite3.Connection:
@@ -735,13 +519,13 @@ def scan_photos_library(library_path: str, output_path: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Scan macOS Photos.app library and build metadata index")
-    parser.add_argument("--library", required=True,
-                        help="Path to .photoslibrary bundle")
-    parser.add_argument("--output", required=True,
-                        help="Output path (.db for SQLite)")
+    parser.add_argument("--source", "--library", dest="source", required=True,
+                        help="Path to .photoslibrary bundle (alias: --library)")
+    parser.add_argument("--output", "-o", dest="output", required=True,
+                        help="Output index path (.db for SQLite)")
     args = parser.parse_args()
 
-    library_path = os.path.abspath(args.library)
+    library_path = os.path.abspath(args.source)
     output_path = os.path.abspath(args.output)
 
     if not library_path.endswith(".photoslibrary"):

@@ -37,7 +37,18 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
 
-## What's New in v3.4
+## What's New in v3.7
+
+| Feature | Description |
+|---------|-------------|
+| 📊 **Library Health & Insights** | New read-only `library_stats.py` (and `--mode stats`) — totals, category/format/year breakdowns, health flags (screenshots, no-EXIF, GPS, iCloud-only, possibly-blurry, favorites), top space consumers. Terminal / JSON / HTML output |
+| 🧩 **Shared Modules Refactor** | Extracted `photo_metadata.py`, `constants.py`, `applescript_utils.py` — eliminated ~600 lines of duplicated EXIF/hash/format code (single source of truth) |
+| 🎛️ **Standardized CLI** | Unified flags across all scripts — `--source` / `--index` (`-i`) / `--output` (`-o`), with old `--input`/`--library` names kept as backward-compatible aliases |
+| 🔁 **Before/After Diff Report** | `--mode photos-album` HTML report now shows new/changed/unchanged albums with photo-count deltas (works with `--dry-run`) |
+| 🐛 **Critical Bug Fixes** | Album separator contract, AppleScript injection in trash, NameError in share workflow, emoji drift between organizer & report |
+
+<details>
+<summary>v3.4</summary>
 
 | Feature | Description |
 |---------|-------------|
@@ -46,6 +57,8 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | 👥 **Semi-Automated Shared Albums** | `--share-to-album` tags & selects photos in Photos.app, you just drag to shared album (1 step) |
 | 📚 **Lean SKILL.md** | SKILL.md reduced to ≤65 lines, details in `references/` directory (detection, import, performance, priority-rules, troubleshooting) |
 | 🔧 **Union-Find Grouping** | Apple QL detection uses union-find algorithm for proper transitive similarity grouping |
+
+</details>
 
 <details>
 <summary>v3.3</summary>
@@ -69,6 +82,7 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - 📐 **Scaled Dedup** — Same photo at different resolutions
 - 📸 **Burst Detection** — Group burst photos via SubSecTime
 - 📋 **Rich Metadata Index** — Extract file size, EXIF dates, GPS, camera info, dimensions, category, hashes into SQLite or CSV
+- 📊 **Library Health & Insights** — Read-only stats report: category/format/year breakdowns, health flags, top space consumers (terminal / JSON / HTML)
 - 🛡️ **Safety-First Design** — Read-only scanning, move-only operations, Trash mode with Finder recovery, CSV-based audit trail
 - 💾 **Zero Data Loss** — Streaming SQLite writes with per-entry commit
 - 💬 **Conversation-Driven** — Interact through your AI assistant; no GUI or config files needed
@@ -165,10 +179,14 @@ Or run the scripts directly:
 
 ```bash
 # Step 1: Scan (SQLite recommended for large libraries)
-python3 scripts/scan_photos.py --input /path/to/your/photos --output ./photo_index.db
+python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db
 
 # Step 1b: Quick scan (zero-install, no deps needed)
-python3 scripts/quick_scan.py --input /path/to/your/photos --output ./photo_index.db --dedup
+python3 scripts/quick_scan.py --source /path/to/your/photos --output ./photo_index.db --dedup
+
+# Step 1c (Optional): Library health & insights (read-only)
+python3 scripts/library_stats.py --index ./photo_index.db
+python3 scripts/library_stats.py -i ./photo_index.db --report ./health.html
 
 # Step 2: Find exact duplicates
 python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./duplicates_exact.csv
@@ -308,6 +326,9 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `organize_photos.py` | One-command interactive pipeline | Source directory | Full pipeline output |
 | `import_to_photos.py` | Import to Photos.app with dedup | Source directory | Import report JSON |
 | `generate_preview.py` | HTML thumbnail preview | Duplicates CSV + index | `preview.html` |
+| `generate_album_report.py` | HTML album organization report (before/after diff) | `.db` index + stats | `album_report.html` |
+| `library_stats.py` | Library health & insights (read-only) | `.db` index | terminal / JSON / `health.html` |
+| `photo_metadata.py` · `constants.py` · `applescript_utils.py` | Shared internal modules (hashing/EXIF, constants, AppleScript) | — | — |
 
 ## Requirements
 

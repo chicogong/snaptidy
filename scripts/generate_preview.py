@@ -21,6 +21,8 @@ import sqlite3
 import sys
 from collections import defaultdict
 
+from constants import format_size
+
 
 def get_thumbnail_base64(path: str, max_size: int = 200) -> str:
     """Generate a base64-encoded thumbnail for an image."""
@@ -49,17 +51,6 @@ def get_thumbnail_base64(path: str, max_size: int = 200) -> str:
             return base64.b64encode(buf.getvalue()).decode("ascii")
     except Exception:
         return ""
-
-
-def format_size(n: int) -> str:
-    """Format bytes to human-readable."""
-    if n >= 1_073_741_824:
-        return f"{n / 1_073_741_824:.1f} GB"
-    elif n >= 1_048_576:
-        return f"{n / 1_048_576:.1f} MB"
-    elif n >= 1_024:
-        return f"{n / 1_024:.1f} KB"
-    return f"{n} B"
 
 
 MATCH_TYPE_LABELS = {
@@ -261,9 +252,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Generate HTML preview of duplicate groups with thumbnails")
     parser.add_argument("--duplicates", required=True, help="Duplicates CSV from find_similar_photos.py")
-    parser.add_argument("--index", required=True, help="SQLite metadata index")
+    parser.add_argument("--index", "-i", dest="index", required=True, help="SQLite metadata index")
     parser.add_argument("--plan", default="", help="Move plan CSV (optional, shows KEEP/MOVE labels)")
-    parser.add_argument("--output", required=True, help="Output HTML file path")
+    parser.add_argument("--output", "--report", "-o", dest="output", required=True,
+                        help="Output HTML file path (alias: --report)")
     parser.add_argument("--max-groups", type=int, default=500,
                         help="Maximum number of duplicate groups to render (default: 500, prevents huge HTML)")
     args = parser.parse_args()

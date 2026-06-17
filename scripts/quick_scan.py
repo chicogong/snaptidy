@@ -16,7 +16,6 @@ scan_photos_library.py with optional deps installed.
 """
 
 import argparse
-import hashlib
 import json
 import math
 import os
@@ -24,14 +23,11 @@ import sqlite3
 import sys
 from datetime import datetime
 
-IMAGE_EXTS = {
-    "jpg", "jpeg", "png", "bmp", "gif", "tif", "tiff", "heic", "heif",
-    "webp", "dng", "cr2", "nef", "arw",
-}
-VIDEO_EXTS = {
-    "mov", "mp4", "m4v", "avi", "mkv", "3gp", "mpg", "mpeg",
-    "hevc", "wmv", "flv",
-}
+# Shared constants/helpers. constants.py is stdlib-only; compute_sha256 uses
+# only hashlib — so quick_scan stays a zero-external-dependency entry point.
+from constants import IMAGE_EXTS, VIDEO_EXTS, get_format_family
+from photo_metadata import compute_sha256
+
 MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
 
 # Apple pre-computed ML quality feature keys from ZCOMPUTEDASSETATTRIBUTES
@@ -45,37 +41,6 @@ APPLE_QUALITY_KEYS = [
     "ZPLEASANTPOSTPROCESSINGSCORE", "ZTASTEFULLYBLURREDSCORE",
     "ZWELLFRAMEDSUBJECTSCORE", "ZWELLTIMEDSHOTSCORE",
 ]
-
-
-def compute_sha256(path: str) -> str:
-    """Compute SHA-256 of a file."""
-    h = hashlib.sha256()
-    try:
-        with open(path, "rb") as f:
-            for chunk in iter(lambda: f.read(65536), b""):
-                h.update(chunk)
-        return h.hexdigest()
-    except Exception:
-        return ""
-
-
-def get_format_family(ext: str) -> str:
-    """Group file extension into format family."""
-    ext_lower = ext.lower()
-    if ext_lower in ("jpg", "jpeg"):
-        return "jpeg"
-    elif ext_lower in ("heic", "heif"):
-        return "heic"
-    elif ext_lower == "png":
-        return "png"
-    elif ext_lower in ("tif", "tiff"):
-        return "tiff"
-    elif ext_lower in ("dng", "cr2", "nef", "arw"):
-        return "raw"
-    elif ext_lower == "webp":
-        return "webp"
-    else:
-        return "other"
 
 
 def auto_categorize(filename: str, ext: str) -> str:
@@ -435,24 +400,25 @@ def find_exact_duplicates(index_path: str, output_path: str = None) -> list:
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="SnapTidy Quick Scan — zero-install entry point (stdlib only)")
-    parser.add_argument("--input", help="Path to photo/video directory to scan")
+    parser.add_argument("--source", "--input", "-i", dest="source",
+                        help="Path to photo/video directory to scan (alias: --input)")
     parser.add_argument("--library",
                         help="Path to .photoslibrary bundle (Photos.app scan)")
-    parser.add_argument("--output", required=True,
-                        help="Output path (.db for SQLite)")
+    parser.add_argument("--output", "-o", dest="output", required=True,
+                        help="Output index path (.db for SQLite)")
     parser.add_argument("--dedup", action="store_true",
                         help="Also find exact duplicates (SHA-256)")
     parser.add_argument("--dedup-output",
                         help="Output path for dedup results (JSON, only with --dedup)")
     args = parser.parse_args()
 
-    if not args.input and not args.library:
-        parser.error("Either --input or --library is required")
+    if not args.source and not args.library:
+        parser.error("Either --source (folder) or --library (.photoslibrary) is required")
 
     if args.library:
         scan_photos_library(args.library, args.output)
     else:
-        scan_directory(args.input, args.output)
+        scan_directory(args.source, args.output)
 
     if args.dedup:
         dedup_output = args.dedup_output or args.output.replace(".db", "_dedup.json")
