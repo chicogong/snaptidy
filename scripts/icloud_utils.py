@@ -23,6 +23,7 @@ non-blocking — the caller should poll file size until it stabilises.
 """
 
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -41,6 +42,12 @@ THUMBNAIL_THRESHOLD_JPEG = 20 * 1024  # 20 KB
 # Polling parameters for download
 DOWNLOAD_POLL_INTERVAL = 1.0  # seconds between size checks
 DOWNLOAD_TIMEOUT = 60  # seconds before giving up on a single file
+
+# Default safety buffer: keep at least this much free space after downloads
+DEFAULT_MIN_FREE_SPACE = 5 * 1024 * 1024 * 1024  # 5 GB
+
+# Estimated size multiplier: originals are typically 10-50x larger than thumbnails
+ESTIMATED_SIZE_MULTIPLIER = 25
 
 
 def is_likely_thumbnail(size_bytes: int, ext: str) -> bool:
@@ -193,6 +200,73 @@ def download_icloud_file(path: str, timeout: int = DOWNLOAD_TIMEOUT) -> bool:
         return final_size > 1024  # At least 1 KB
     except OSError:
         return False
+
+
+def get_disk_space(path: str) -> tuple:
+    """Get disk space information for the volume containing *path*.
+
+    Returns:
+        (total_bytes, used_bytes, free_bytes)
+    """
+    usage = shutil.disk_usage(path)
+    return (usage.total, usage.used, usage.free)
+
+
+def check_disk_space(download_path: str, estimated_bytes: int,
+                     min_free_bytes: int = DEFAULT_MIN_FREE_SPACE) -> dict:
+    """Check if there's enough disk space for a download.
+
+    Args:
+        download_path: a path on the volume where files will be downloaded
+        estimated_bytes: estimated total download size in bytes
+        min_free_bytes: minimum free space to keep after download (safety buffer)
+
+    Returns:
+        dict with keys:
+            "sufficient": bool — True if enough space
+            "total": int — total disk space
+            "free": int — current free space
+            "available_for_download": int — free - min_free (what we can actually use)
+            "estimated": int — estimated download size
+            "shortfall": int — how much more space is needed (0 if sufficient)
+            "max_files": int — how many files can be downloaded with available space
+    """
+    total, used, free = get_disk_space(download_path)
+    available = max(0, free - min_free_bytes)
+    shortfall = max(0, estimated_bytes - available)
+
+    # Estimate how many files can be downloaded
+    # If estimated_bytes is for N files, each file averages estimated_bytes/N
+    max_files = 0
+    if estimated_bytes > 0:
+        avg_per_file = estimated_bytes / max(1, 1)  # will be overridden by caller
+        max_files = int(available // (estimated_bytes / max(1, 1))) if estimated_bytes else 0
+
+    return {
+        "sufficient": available >= estimated_bytes,
+        "total": total,
+        "free": free,
+        "available_for_download": available,
+        "estimated": estimated_bytes,
+        "shortfall": shortfall,
+        "max_files": max_files,
+    }
+
+
+def estimate_download_size(icloud_files: list) -> int:
+    """Estimate total download size for a list of iCloud placeholder files.
+
+    Uses the thumbnail size × multiplier heuristic: originals are typically
+    10-50x larger than thumbnails. We use a conservative 25x multiplier.
+
+    Args:
+        icloud_files: list of dicts from scan_directory_for_icloud()
+
+    Returns:
+        Estimated total bytes needed for download.
+    """
+    total_thumbnail_size = sum(f.get("size", 0) for f in icloud_files)
+    return total_thumbnail_size * ESTIMATED_SIZE_MULTIPLIER
 
 
 def batch_download(paths: list, progress_callback=None) -> dict:

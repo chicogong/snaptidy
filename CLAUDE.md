@@ -109,6 +109,15 @@ python3 scripts/find_duplicate_folders.py --index ./photo_index.db
 
 # 22. Space what-if analysis
 python3 scripts/library_stats.py --index ./photo_index.db --what-if
+
+# 23. Check iCloud placeholder files (before scanning)
+python3 scripts/check_icloud.py -i ~/Pictures/Photos --report
+
+# 24. Download iCloud files (with disk space safety check)
+python3 scripts/check_icloud.py -i ~/Pictures/Photos --download
+# When disk space is limited:
+# python3 scripts/check_icloud.py -i ~/Pictures/Photos --download --max-download 100
+# python3 scripts/check_icloud.py -i ~/Pictures/Photos --download --min-free 2
 ```
 
 ### Option B: Full pipeline with v3.10 enhancements
@@ -179,6 +188,12 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-location
 | `--mode dedup\|by-date\|by-category\|by-location` | Organize mode |
 | `--no-geocode` | Disable reverse geocoding during scan |
 | `--geocode` | Enable reverse geocoding (default) |
+| `--skip-icloud` | Skip iCloud placeholder files during scan |
+| `--download-icloud` | Trigger `brctl download` for iCloud files, then scan |
+| `--warn-icloud` | Scan iCloud files but mark them (default) |
+| `--exclude-icloud` | Exclude iCloud placeholder files from dedup (find_exact_duplicates, find_similar_photos) |
+| `--max-download N` | Download at most N iCloud files (check_icloud.py) |
+| `--min-free GB` | Minimum free disk space in GB for iCloud download (default: 5) |
 
 ### EXIF Editing Flags (edit_exif.py)
 

@@ -179,6 +179,7 @@ SQLite `photos` table columns:
 - Camera: camera_make, camera_model
 - Priority: folder_tag, scan_root, scanned_at
 - Quality: blur_score, brightness, contrast, quality_score (from assess_quality.py)
+- iCloud: icloud_state (from scan_photos.py — "local", "icloud_placeholder", "downloaded", "download_failed")
 - Photos.app exclusive: photos_favorite, photos_hidden, photos_screenshot, photos_duplicate_visibility, photos_cloud_state, photos_albums, photos_shared_albums, photos_icloud_locally_available
 
 Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible).
@@ -380,3 +381,82 @@ Categories: screenshots, duplicates, RAW files, low quality (quality_score < 30)
 | `--create-event-albums` | organize_photos.py | Create Photos.app albums from events |
 | `--verify-backup DIR` | verify_backup.py | Verify backup against directory |
 | `--find-duplicate-folders` | find_duplicate_folders.py | Find duplicate/similar folders |
+
+## v3.11 — Performance & New Tools
+
+### Parallel Scanning (scan_photos.py --parallel N)
+
+ThreadPoolExecutor with batch commits (every 50 entries). 2.9x speedup on 4 threads. Results identical to serial mode.
+
+### Incremental Scanning (scan_photos.py --incremental)
+
+Compares (file_path, size_bytes, file_mtime) against existing DB entries. Only processes new or modified files. 35x faster on re-run (0.1s vs 3.4s for 270 files).
+
+### pHash Prefix-Index Optimization
+
+Groups phashes by first N hex chars, only compares within same/adjacent prefix groups. Reduces O(n²) to ~5% comparisons for typical thresholds (≤10).
+
+### Photo Compression (compress_photos.py)
+
+Resolution-based JPEG quality tiers: >8MP→85, 2-8MP→90, <2MP→95. PNG→JPEG conversion (skips transparent). Minimum savings threshold (>90% original = skip). `--dry-run`, `--backup .orig`, `--report CSV`.
+
+### Timeline Gap Detection (timeline_gaps.py)
+
+Adaptive threshold (median + 3*IQR) or fixed `--min-gap-days`. Severity: critical/major/moderate/minor. Monthly heatmap + estimated missing photo count.
+
+## v3.12 — iCloud Optimization Handling
+
+### Problem
+
+macOS "Optimize Storage" offloads original photos to iCloud, keeping only small thumbnails (2-50 KB) locally. These thumbnails have different SHA-256 hashes and pHashes than originals, causing false results in dedup.
+
+### Detection (`icloud_utils.py`)
+
+Three methods checked for each file:
+1. **`.icloud` companion file** — iCloud Drive style: `.{filename}.icloud` exists next to missing original
+2. **Extended attribute** — `com.apple.iCloud.syncState` xattr on the file
+3. **Size heuristic** — HEIC < 100 KB or JPEG < 20 KB = likely thumbnail
+
+### Three Scan Modes (`scan_photos.py`)
+
+| Mode | Flag | Behavior | DB `icloud_state` value |
+|------|------|----------|--------------------------|
+| Warn (default) | `--warn-icloud` | Scan but mark as placeholder | `icloud_placeholder` |
+| Skip | `--skip-icloud` | Skip entirely, don't index | (not in DB) |
+| Download | `--download-icloud` | Trigger `brctl download`, wait, re-scan | `downloaded` or `download_failed` |
+
+### Standalone Check Script (`check_icloud.py`)
+
+```bash
+# Report: count, size, estimates, disk space check
+python3 check_icloud.py -i ~/Pictures/Photos --report
+
+# Download all (with disk space safety check)
+python3 check_icloud.py -i ~/Pictures/Photos --download
+
+# Download in batches when disk space is limited
+python3 check_icloud.py -i ~/Pictures/Photos --download --max-download 100
+
+# Reduce safety buffer (default: 5 GB)
+python3 check_icloud.py -i ~/Pictures/Photos --download --min-free 2
+
+# Force download despite space warning (not recommended)
+python3 check_icloud.py -i ~/Pictures/Photos --download --force
+```
+
+### Disk Space Safety
+
+Before downloading, the script:
+1. Estimates download size (thumbnail size × 25 multiplier)
+2. Checks available disk space via `shutil.disk_usage()`
+3. Subtracts safety buffer (default 5 GB, configurable via `--min-free`)
+4. If insufficient: reports shortfall, suggests `--max-download N`, `--skip-icloud`, or space cleanup
+5. During download: checks disk space after each file, stops if below buffer
+
+### Downstream Filtering
+
+| Script | Flag | Effect |
+|--------|------|--------|
+| `find_exact_duplicates.py` | `--exclude-icloud` | Excludes `icloud_state IN ('icloud_placeholder', 'download_failed')` from SHA-256 dedup |
+| `find_similar_photos.py` | `--exclude-icloud` | Excludes from pHash, scaled, cross-format, and detect-all modes |
+| `library_stats.py` | (automatic) | Shows `icloud_placeholder`, `icloud_downloaded`, `icloud_failed` counts in health flags |

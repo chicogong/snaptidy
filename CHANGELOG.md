@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0] - 2026-06-18
+
+### Added
+
+- **iCloud Optimization Handling** — when macOS "Optimize Storage" offloads
+  original photos to iCloud (keeping only 2-50 KB thumbnails locally),
+  SnapTidy now detects, skips, or downloads these placeholder files:
+  - **`icloud_utils.py`** — shared module with `check_icloud_status()`
+    (three detection methods: `.icloud` companion file, xattr, size
+    heuristic), `download_icloud_file()` (brctl download + polling),
+    `get_disk_space()`, `check_disk_space()`, `estimate_download_size()`,
+    `batch_download()`, `scan_directory_for_icloud()`
+  - **`check_icloud.py`** — standalone script: scan directory for
+    iCloud-only files, report count/size/estimates, **disk space check
+    before download with shortfall calculation**, batch download with
+    progress, `--max-download N` for limited space, `--min-free GB`
+    safety buffer, `--batch-size N` for periodic space checks,
+    `--force` to override space warning, `--dry-run`
+  - **`scan_photos.py`** — three iCloud modes: `--warn-icloud`
+    (default, scan but mark), `--skip-icloud` (skip placeholders),
+    `--download-icloud` (trigger brctl download then scan full file);
+    new `icloud_state` DB column with index; iCloud statistics
+    printed at end of scan
+- **Downstream iCloud filtering**: `find_exact_duplicates.py
+  --exclude-icloud` and `find_similar_photos.py --exclude-icloud`
+  skip files with `icloud_state IN ('icloud_placeholder',
+  'download_failed')` — their SHA-256/pHash values are unreliable
+
+### Changed
+
+- `library_stats.py` — health flags now include `icloud_placeholder`,
+  `icloud_downloaded`, `icloud_failed` counts in terminal and HTML reports
+- `organize_photos.py` — imports iCloud functions from shared
+  `icloud_utils.py` module (removed duplicated inline functions)
+- DB schema: new `icloud_state TEXT DEFAULT 'local'` column with index
+
+### Disk Space Safety
+
+When downloading iCloud files, the script:
+1. Estimates download size (thumbnail size × 25 multiplier)
+2. Checks available disk space via `shutil.disk_usage()`
+3. Subtracts safety buffer (default 5 GB, `--min-free` configurable)
+4. If insufficient: reports shortfall, suggests `--max-download N`,
+   `--skip-icloud`, or space cleanup
+5. During download: checks disk space after each file, stops if below buffer
+
+## [3.11.0] - 2026-06-17
+
+### Added
+
+- **Parallel scanning** (`scan_photos.py --parallel N`) —
+  ThreadPoolExecutor with batch commits, 2.9x speedup on 4 threads
+- **Incremental scanning** (`scan_photos.py --incremental`) —
+  skip unchanged files, 35x faster on re-run (0.1s vs 3.4s)
+- **pHash prefix-index optimization** — groups by hex prefix, only
+  compares within same/adjacent groups, reduces O(n²) to ~5%
+- **Photo compression** (`compress_photos.py`) — resolution-based
+  JPEG quality tiers, PNG→JPEG conversion, dry-run, backup safety
+- **Timeline gap detection** (`timeline_gaps.py`) — abnormal date
+  gaps with adaptive threshold, severity classification, heatmap
+
+### Changed
+
+- **Unified `constants.py`** — all format sets consolidated; added
+  AVIF, WebM, MTS, ORF, RW2, RAF, SRW, RAW; dot-prefixed variants
+  for direct suffix comparison; `JPEG_EXTS`, `HEIC_EXTS`, `MEDIA_EXTS`
+
 ## [3.10.0] - 2026-06-17
 
 ### Added
