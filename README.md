@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.11-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.12-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
 ## Table of Contents
 
 - [Why SnapTidy?](#why-snaptidy)
-- [What's New](#whats-new-in-v311)
+- [What's New](#whats-new-in-v312)
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
@@ -36,6 +36,16 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 **iPhone users**: You don't need iCloud sync to organize your photos. Connect your iPhone via USB and SnapTidy can scan the Photos.app library directly, or use Finder to sync photos to a local folder first. Tools like [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) also allow direct USB access to your iPhone's DCIM without iCloud.
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
+
+## What's New in v3.12
+
+| Feature | Description |
+|---------|-------------|
+| ☁️ **iCloud Optimization Handling** | Three modes: `--warn-icloud` (default, scan but mark), `--skip-icloud` (skip placeholders), `--download-icloud` (trigger `brctl download` then scan); detects thumbnails via `.icloud` companion files, xattr, and size heuristics |
+| 🔍 **iCloud Check Script** | `check_icloud.py` — standalone tool to scan for iCloud-only files, report count/size/estimates, batch download with progress, verify all files local before downstream processing |
+| 🧹 **Downstream iCloud Filtering** | `find_exact_duplicates.py --exclude-icloud` and `find_similar_photos.py --exclude-icloud` — skip unreliable iCloud placeholder hashes/pHashes in dedup |
+| 📊 **Enhanced Library Health** | `library_stats.py` now shows detailed iCloud status: placeholder count, downloaded count, failed downloads — in terminal and HTML reports |
+| 📦 **Shared iCloud Module** | `icloud_utils.py` — consolidated `check_icloud_status()`, `download_icloud_file()`, `is_likely_thumbnail()`, `batch_download()` into a single reusable module |
 
 ## What's New in v3.11
 
@@ -148,6 +158,7 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - 🎬 **Video Dedup** — Frame sampling + pHash for video duplicates
 - ✏️ **Smart Rename** — Rename by EXIF metadata with configurable templates
 - 💥 **Corrupted Detection** — Find broken/truncated images and unplayable videos
+- ☁️ **iCloud Optimization Handling** — Detect, skip, or download iCloud placeholder thumbnails before scanning; standalone `check_icloud.py` for batch pre-download with progress
 - 📅 **Date Correction** — Fix missing EXIF dates from filename patterns, neighbors, or file mtime
 - 🔄 **Backup Verification** — Verify backup completeness (quick or SHA-256 full mode)
 - 📂 **Duplicate Folder Detection** — Find folders that are complete or near-complete duplicates
@@ -581,6 +592,35 @@ python3 scripts/library_stats.py --index ./photo_index.db --what-if
 python3 scripts/library_stats.py --index ./photo_index.db --what-if --report savings.html
 ```
 
+### iCloud Optimization Handling
+
+When macOS "Optimize Storage" is enabled, iCloud offloads original photos to the cloud and keeps only small thumbnails locally (2-50 KB). These thumbnails produce unreliable SHA-256 hashes and pHashes, causing false results in dedup.
+
+```bash
+# Step 1: Check which files are iCloud-only (before scanning)
+python3 scripts/check_icloud.py --source ~/Pictures/Photos --report
+
+# Step 2: Download all iCloud files (with progress + size estimates)
+python3 scripts/check_icloud.py --source ~/Pictures/Photos --download
+
+# Step 2b: Dry-run — see what would be downloaded
+python3 scripts/check_icloud.py --source ~/Pictures/Photos --download --dry-run
+
+# Step 3: Scan with iCloud awareness
+python3 scripts/scan_photos.py -i ~/Pictures/Photos -o index.db                        # warn (default)
+python3 scripts/scan_photos.py -i ~/Pictures/Photos -o index.db --skip-icloud            # skip placeholders
+python3 scripts/scan_photos.py -i ~/Pictures/Photos -o index.db --download-icloud       # download then scan
+
+# Step 4: Dedup with iCloud exclusion (skip unreliable placeholder hashes)
+python3 scripts/find_exact_duplicates.py -i index.db -o dups.csv --exclude-icloud
+python3 scripts/find_similar_photos.py -i index.db -o similar.csv --exclude-icloud
+```
+
+**Detection methods** (all three checked for each file):
+1. `.icloud` companion file exists (iCloud Drive style)
+2. `com.apple.iCloud.syncState` extended attribute
+3. Size heuristic (HEIC < 100 KB or JPEG < 20 KB = likely thumbnail)
+
 ### EXIF Editing
 
 ```bash
@@ -681,11 +721,12 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `find_duplicate_folders.py` | Find duplicate/similar folders by content hash | `.db` index or directory | `.csv` report |
 | `compress_photos.py` | Smart photo compression (resolution-based quality, PNG→JPEG) | `.db` index | Compressed files + `.csv` report |
 | `timeline_gaps.py` | Detect abnormal date gaps (missing photo periods) | `.db` index | `.csv` report + terminal summary |
+| `check_icloud.py` | Detect & pre-download iCloud placeholder files | Photo directory | Report + batch download |
 | `generate_album_report.py` | HTML album organization report (before/after diff) | `.db` index + stats | `album_report.html` |
 | `library_stats.py` | Library health & insights + **space what-if analysis** | `.db` index | terminal / JSON / `health.html` |
 | `reverse_geocode.py` | GPS → place names (city/region/country) | Lat/lon coordinates | Place name text |
 | `edit_exif.py` | EXIF editing: strip GPS, set dates, write tags | Index DB or file paths | Modified files + log |
-| `photo_metadata.py` · `constants.py` · `applescript_utils.py` | Shared internal modules (hashing/EXIF, constants, AppleScript) | — | — |
+| `icloud_utils.py` · `photo_metadata.py` · `constants.py` · `applescript_utils.py` | Shared internal modules (iCloud detection, hashing/EXIF, constants, AppleScript) | — | — |
 
 ## Requirements
 

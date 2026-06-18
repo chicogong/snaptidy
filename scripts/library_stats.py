@@ -76,6 +76,7 @@ def collect_stats(index_path: str) -> dict:
     largest = []  # (size, filename, path)
 
     n_screenshot = n_noexif = n_gps = n_icloud_only = n_blur = n_favorite = 0
+    n_icloud_warn = n_icloud_downloaded = n_icloud_failed = 0
 
     for r in rows:
         d = dict(r)
@@ -110,6 +111,14 @@ def collect_stats(index_path: str) -> dict:
             n_gps += 1
         if "photos_cloud_state" in cols and (d.get("photos_cloud_state") or 0) > 0:
             n_icloud_only += 1
+        # New icloud_state column from scan_photos.py
+        ic_state = d.get("icloud_state") or ""
+        if ic_state == "icloud_placeholder":
+            n_icloud_warn += 1
+        elif ic_state == "downloaded":
+            n_icloud_downloaded += 1
+        elif ic_state == "download_failed":
+            n_icloud_failed += 1
         if "photos_favorite" in cols and d.get("photos_favorite"):
             n_favorite += 1
         # Possible blur via Apple sharp score
@@ -149,6 +158,9 @@ def collect_stats(index_path: str) -> dict:
         "no_exif": n_noexif,
         "has_gps": n_gps,
         "icloud_only": n_icloud_only,
+        "icloud_placeholder": n_icloud_warn,
+        "icloud_downloaded": n_icloud_downloaded,
+        "icloud_failed": n_icloud_failed,
         "possible_blur": n_blur,
         "favorites": n_favorite,
     }
@@ -204,6 +216,12 @@ def print_terminal(stats: dict) -> None:
     print(f"     😶 No EXIF metadata : {f['no_exif']:>5}")
     print(f"     📍 With GPS (privacy): {f['has_gps']:>5}")
     print(f"     ☁️  iCloud-only      : {f['icloud_only']:>5}")
+    if f.get("icloud_placeholder", 0) > 0:
+        print(f"     ⚠️  iCloud placeholder: {f['icloud_placeholder']:>5}")
+    if f.get("icloud_downloaded", 0) > 0:
+        print(f"     ✅ iCloud downloaded  : {f['icloud_downloaded']:>5}")
+    if f.get("icloud_failed", 0) > 0:
+        print(f"     ❌ iCloud download fail: {f['icloud_failed']:>5}")
     print(f"     🌫️  Possibly blurry  : {f['possible_blur']:>5}")
     print(f"     ⭐ Favorites        : {f['favorites']:>5}")
 
@@ -245,6 +263,13 @@ def build_html(stats: dict) -> str:
         ("🌫️", "可能模糊 Blurry", f["possible_blur"]),
         ("⭐", "收藏 Favorites", f["favorites"]),
     ]
+    # Add detailed iCloud status if available
+    if f.get("icloud_placeholder", 0) > 0:
+        flag_cards.append(("⚠️", "iCloud 缩略图 Placeholder", f["icloud_placeholder"]))
+    if f.get("icloud_downloaded", 0) > 0:
+        flag_cards.append(("✅", "iCloud 已下载 Downloaded", f["icloud_downloaded"]))
+    if f.get("icloud_failed", 0) > 0:
+        flag_cards.append(("❌", "iCloud 下载失败 Failed", f["icloud_failed"]))
     flag_html = "\n".join(
         f"<div class='flag-card'><div class='flag-ico'>{ico}</div>"
         f"<div class='flag-num'>{num}</div><div class='flag-lbl'>{esc(lbl)}</div></div>"

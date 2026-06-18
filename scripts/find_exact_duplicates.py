@@ -18,20 +18,32 @@ import sys
 from constants import format_size
 
 
-def find_duplicates_db(index_path: str) -> tuple:
+def find_duplicates_db(index_path: str, include_icloud: bool = True) -> tuple:
     """Find duplicates from SQLite database (fast, indexed).
 
     Returns (duplicates_list, group_meta_dict).
+
+    Args:
+        include_icloud: if False, skip files marked as iCloud placeholders
+                        (their SHA-256 is unreliable for dedup)
     """
     conn = sqlite3.connect(index_path)
-    cursor = conn.execute("""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(photos)").fetchall()}
+
+    icloud_filter = ""
+    if not include_icloud and "icloud_state" in cols:
+        icloud_filter = " AND icloud_state NOT IN ('icloud_placeholder', 'download_failed')"
+
+    cursor = conn.execute(f"""
         SELECT sha256, file_path, size_bytes, category, format_family
         FROM photos
         WHERE sha256 IN (
             SELECT sha256 FROM photos
+            WHERE 1=1 {icloud_filter}
             GROUP BY sha256
             HAVING COUNT(*) > 1
         )
+        {icloud_filter}
         ORDER BY sha256, file_path
     """)
     groups = {}
@@ -144,12 +156,14 @@ def main() -> None:
     parser.add_argument("--output", "-o", dest="output", required=True, help="Path to output duplicates CSV")
     parser.add_argument("--format", choices=["csv", "human"], default="csv",
                         help="Output format: csv (default) or human (readable report)")
+    parser.add_argument("--exclude-icloud", action="store_true",
+                        help="Exclude iCloud placeholder files (their SHA-256 is unreliable for dedup)")
     args = parser.parse_args()
     index_path = os.path.abspath(args.index)
     output_path = os.path.abspath(args.output)
 
     if index_path.endswith(".db"):
-        duplicates, group_meta = find_duplicates_db(index_path)
+        duplicates, group_meta = find_duplicates_db(index_path, include_icloud=not args.exclude_icloud)
     else:
         duplicates, group_meta = find_duplicates_csv(index_path)
 
@@ -162,6 +176,8 @@ def main() -> None:
 
     num_groups = len(set(d["group_id"] for d in duplicates)) if duplicates else 0
     print(f"Found {len(duplicates)} duplicate files across {num_groups} groups.")
+    if args.exclude_icloud:
+        print("  (iCloud placeholder files excluded)")
 
 
 if __name__ == "__main__":

@@ -23,6 +23,8 @@ import subprocess
 import sys
 from datetime import datetime
 
+from icloud_utils import check_icloud_status, download_icloud_file
+
 # Pipeline scripts
 from scan_photos import scan_directory
 from scan_photos_library import scan_photos_library
@@ -975,63 +977,12 @@ def confirm_plan(stats: dict, prefs: dict) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# iCloud / External source helpers
+# iCloud / External source helpers — now in shared icloud_utils module
 # ---------------------------------------------------------------------------
-
-def check_icloud_status(path: str) -> str:
-    """Check if a file is an iCloud placeholder (not fully downloaded).
-
-    Returns: "local", "icloud_placeholder", or "unknown"
-    """
-    # iCloud files that aren't downloaded have an extended attribute
-    # or are zero-byte with a .icloud companion file
-    try:
-        if not os.path.exists(path):
-            return "unknown"
-
-        # Check for .icloud companion file (iCloud Drive style)
-        dir_path = os.path.dirname(path)
-        basename = os.path.basename(path)
-        icloud_file = os.path.join(dir_path, f".{basename}.icloud")
-        if os.path.exists(icloud_file):
-            return "icloud_placeholder"
-
-        # Check file size — iCloud placeholders are typically 0 bytes
-        if os.path.getsize(path) == 0:
-            # Could be iCloud placeholder or truly empty file
-            # Check if the file has the iCloud extended attribute
-            result = subprocess.run(
-                ["xattr", "-p", "com.apple.iCloud.syncState", path],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode == 0:
-                return "icloud_placeholder"
-
-        return "local"
-    except Exception:
-        return "unknown"
-
-
-def download_icloud_file(path: str) -> bool:
-    """Trigger download of an iCloud file by reading it.
-
-    Uses `brctl download` on macOS to trigger iCloud download.
-    Returns True if download was triggered, False otherwise.
-    """
-    try:
-        result = subprocess.run(
-            ["brctl", "download", path],
-            capture_output=True, text=True, timeout=10
-        )
-        return result.returncode == 0
-    except Exception:
-        # Fallback: try opening the file to trigger download
-        try:
-            with open(path, "rb") as f:
-                f.read(1)
-            return True
-        except Exception:
-            return False
+# check_icloud_status() and download_icloud_file() are imported from
+# icloud_utils at the top of this file. The functions below were previously
+# defined inline; they have been consolidated into the shared module so that
+# scan_photos.py, check_icloud.py, and this script all use the same logic.
 
 
 def detect_android_mount() -> list:

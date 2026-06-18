@@ -48,6 +48,7 @@ from photo_metadata import (
 )
 from constants import IMAGE_EXTS, VIDEO_EXTS, RAW_EXTS, HEIC_EXTS, get_format_family
 from reverse_geocode import reverse_geocode, init_cache as geo_init_cache, flush_cache as geo_flush_cache
+from icloud_utils import check_icloud_status, download_icloud_file
 
 # Skip patterns for directories
 SKIP_DIR_SUFFIXES = {
@@ -166,15 +167,42 @@ def get_folder_tag(full_path: str, scan_root: str) -> str:
     return ""
 
 
-def _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=True):
+def _compute_entry(full_path, name, ext, stat, input_dir, scan_time,
+                   geocode=True, icloud_mode="warn"):
     """Compute metadata dict for a single file.
 
     Returns a dict ready for INSERT OR REPLACE into the photos table.
+
+    Args:
+        icloud_mode: "warn" (scan but mark), "skip" (skip iCloud files),
+                     "download" (trigger download then scan)
     """
     size_bytes = stat.st_size
     mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
     category = detect_category(name, ext)
     folder_tag = get_folder_tag(full_path, input_dir)
+
+    # Check iCloud status
+    icloud_state = check_icloud_status(full_path, size_bytes, ext)
+
+    if icloud_state == "icloud_placeholder":
+        if icloud_mode == "download":
+            # Trigger download and wait for it
+            if download_icloud_file(full_path):
+                # Re-stat after download
+                try:
+                    stat = os.stat(full_path)
+                    size_bytes = stat.st_size
+                    mtime = datetime.fromtimestamp(stat.st_mtime).isoformat()
+                    icloud_state = "downloaded"
+                except OSError:
+                    pass
+            else:
+                icloud_state = "download_failed"
+        elif icloud_mode == "skip":
+            # Return None to signal skip
+            return None
+        # warn mode: just mark it and continue (metadata may be unreliable)
 
     # Initialize fields common to images and videos
     exif_dt = ""
@@ -244,6 +272,7 @@ def _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=Tru
         "place_region": place_region,
         "place_country": place_country,
         "place_country_code": place_country_code,
+        "icloud_state": icloud_state,
     }
 
 
@@ -285,6 +314,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
         ("place_region", "TEXT DEFAULT ''"),
         ("place_country", "TEXT DEFAULT ''"),
         ("place_country_code", "TEXT DEFAULT ''"),
+        ("icloud_state", "TEXT DEFAULT 'local'"),
     ]
     for col_name, col_type in new_columns:
         try:
@@ -302,6 +332,7 @@ def init_db(db_path: str) -> sqlite3.Connection:
     conn.execute("CREATE INDEX IF NOT EXISTS idx_format_family ON photos(format_family)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_place_city ON photos(place_city)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_place_country ON photos(place_country)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_icloud_state ON photos(icloud_state)")
     conn.commit()
     return conn
 
@@ -316,7 +347,7 @@ def _insert_entry(conn, entry):
 
 def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                     geocode: bool = True, parallel: int = 1,
-                    incremental: bool = False) -> None:
+                    incremental: bool = False, icloud_mode: str = "warn") -> None:
     """Walk through input_dir and write metadata to SQLite DB or CSV.
 
     For SQLite mode, entries are written and committed one-by-one (serial)
@@ -326,6 +357,11 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
 
     If incremental=True, only process files that are new or modified since
     the last scan (compared by file_path + size_bytes + file_mtime).
+
+    Args:
+        icloud_mode: "warn" (default — scan but mark iCloud files),
+                     "skip" (skip iCloud placeholder files),
+                     "download" (trigger download then scan full file)
     """
     input_dir = os.path.abspath(input_dir)
 
@@ -336,6 +372,10 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
     scan_time = datetime.now().isoformat()
     categories = {}
     heic_count = 0
+    icloud_warn_count = 0
+    icloud_skip_count = 0
+    icloud_download_count = 0
+    icloud_download_fail_count = 0
 
     # Phase 1: Collect file list (fast)
     file_list = []
@@ -414,7 +454,11 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                     print(f"  Scanning... {idx}/{len(valid_files)} ({pct}%)")
                     last_pct = pct
 
-                entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
+                entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time,
+                                       geocode=geocode, icloud_mode=icloud_mode)
+                if entry is None:
+                    icloud_skip_count += 1
+                    continue
                 _insert_entry(conn, entry)
                 conn.commit()  # Commit every entry — zero data loss on crash
 
@@ -422,6 +466,13 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                 categories[cat] = categories.get(cat, 0) + 1
                 if entry["extension"] in HEIC_EXTS:
                     heic_count += 1
+                ic_state = entry.get("icloud_state", "local")
+                if ic_state == "icloud_placeholder":
+                    icloud_warn_count += 1
+                elif ic_state == "downloaded":
+                    icloud_download_count += 1
+                elif ic_state == "download_failed":
+                    icloud_download_fail_count += 1
         else:
             # Parallel mode — compute entries in threads, batch-write
             print(f"  Using {parallel} parallel workers...")
@@ -429,7 +480,8 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
             done_count = 0
             with ThreadPoolExecutor(max_workers=parallel) as executor:
                 future_to_file = {
-                    executor.submit(_compute_entry, fp, name, ext, stat, input_dir, scan_time, geocode=geocode): (fp, name, ext)
+                    executor.submit(_compute_entry, fp, name, ext, stat, input_dir, scan_time,
+                                   geocode=geocode, icloud_mode=icloud_mode): (fp, name, ext)
                     for fp, name, ext, stat in valid_files
                 }
                 for future in as_completed(future_to_file):
@@ -441,6 +493,9 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
 
                     try:
                         entry = future.result()
+                        if entry is None:
+                            icloud_skip_count += 1
+                            continue
                         _insert_entry(conn, entry)
                         # Batch commit every 50 entries (balance speed vs. crash safety)
                         if done_count % 50 == 0:
@@ -450,6 +505,13 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                         categories[cat] = categories.get(cat, 0) + 1
                         if entry["extension"] in HEIC_EXTS:
                             heic_count += 1
+                        ic_state = entry.get("icloud_state", "local")
+                        if ic_state == "icloud_placeholder":
+                            icloud_warn_count += 1
+                        elif ic_state == "downloaded":
+                            icloud_download_count += 1
+                        elif ic_state == "download_failed":
+                            icloud_download_fail_count += 1
                     except Exception:
                         pass
 
@@ -468,6 +530,18 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
         if not HEIC_SUPPORT and heic_count > 0:
             print(f"  ⚠️  {heic_count} HEIC/HEIF files found — install pillow-heif for full support:")
             print(f"      pip install pillow-heif")
+        # iCloud statistics
+        if icloud_warn_count > 0 or icloud_skip_count > 0 or icloud_download_count > 0:
+            print(f"\n  ☁️  iCloud status:")
+            if icloud_warn_count > 0:
+                print(f"     ⚠️  {icloud_warn_count} iCloud placeholder files scanned (metadata may be unreliable)")
+                print(f"         Use --download-icloud to download originals before scanning")
+            if icloud_skip_count > 0:
+                print(f"     ⏭️  {icloud_skip_count} iCloud placeholder files skipped")
+            if icloud_download_count > 0:
+                print(f"     ✅ {icloud_download_count} iCloud files downloaded and scanned")
+            if icloud_download_fail_count > 0:
+                print(f"     ❌ {icloud_download_fail_count} iCloud files failed to download")
     else:
         # --- CSV mode ---
         entries = []
@@ -491,8 +565,10 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                 except OSError:
                     continue
 
-                entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time, geocode=geocode)
-                entries.append(entry)
+                entry = _compute_entry(full_path, name, ext, stat, input_dir, scan_time,
+                                       geocode=geocode, icloud_mode=icloud_mode)
+                if entry is not None:
+                    entries.append(entry)
         else:
             # Parallel CSV mode
             valid_files = []
@@ -514,7 +590,8 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
             done_count = 0
             with ThreadPoolExecutor(max_workers=parallel) as executor:
                 future_to_file = {
-                    executor.submit(_compute_entry, fp, name, ext, stat, input_dir, scan_time, geocode=geocode): (fp, name, ext)
+                    executor.submit(_compute_entry, fp, name, ext, stat, input_dir, scan_time,
+                                   geocode=geocode, icloud_mode=icloud_mode): (fp, name, ext)
                     for fp, name, ext, stat in valid_files
                 }
                 for future in as_completed(future_to_file):
@@ -524,7 +601,9 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                         print(f"  Scanning... {done_count}/{len(valid_files)} ({pct}%)")
                         last_pct = pct
                     try:
-                        entries.append(future.result())
+                        entry = future.result()
+                        if entry is not None:
+                            entries.append(entry)
                     except Exception:
                         pass
 
@@ -574,6 +653,12 @@ def main() -> None:
                         help="Number of parallel workers (default: 1, try 4 for speed)")
     parser.add_argument("--incremental", action="store_true",
                         help="Only scan new or modified files (skip unchanged, DB mode only)")
+    parser.add_argument("--skip-icloud", action="store_true",
+                        help="Skip iCloud placeholder files (thumbnails not fully downloaded)")
+    parser.add_argument("--download-icloud", action="store_true",
+                        help="Trigger iCloud download for placeholder files before scanning them")
+    parser.add_argument("--warn-icloud", action="store_true", default=True,
+                        help="Scan iCloud placeholder files but mark them (default behavior)")
     args = parser.parse_args()
 
     input_dir = os.path.abspath(args.source)
@@ -594,8 +679,16 @@ def main() -> None:
     else:
         use_db = False
 
+    # Determine iCloud mode
+    icloud_mode = "warn"
+    if args.skip_icloud:
+        icloud_mode = "skip"
+    elif args.download_icloud:
+        icloud_mode = "download"
+
     scan_directory(input_dir, output_path, use_db=use_db, geocode=args.geocode,
-                   parallel=args.parallel, incremental=args.incremental)
+                   parallel=args.parallel, incremental=args.incremental,
+                   icloud_mode=icloud_mode)
 
 
 if __name__ == "__main__":

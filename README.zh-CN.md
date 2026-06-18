@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.11-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.12-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
 
 ## 目录
 
 - [为什么选择 SnapTidy？](#为什么选择-snaptidy)
-- [新功能](#v38-新功能)
+- [新功能](#v312-新功能)
 - [核心特性](#核心特性)
 - [安装](#安装)
 - [工作原理](#工作原理)
@@ -36,6 +36,16 @@
 **iPhone 用户**：整理照片不需要 iCloud 同步到电脑。通过 USB 连接 iPhone，SnapTidy 可以直接扫描 Photos.app 图库，或者先用 Finder 将照片同步到本地文件夹。使用 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 等工具还可以直接通过 USB 访问 iPhone 的 DCIM 目录，无需 iCloud。
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
+
+## v3.12 新功能
+
+| 功能 | 说明 |
+|------|------|
+| ☁️ **iCloud 优化存储处理** | 三种模式：`--warn-icloud`（默认，扫描但标记）、`--skip-icloud`（跳过占位文件）、`--download-icloud`（触发 `brctl download` 下载后扫描）；通过 `.icloud` 伴生文件、扩展属性、大小启发式检测缩略图 |
+| 🔍 **iCloud 检查脚本** | `check_icloud.py` — 独立工具：扫描目录检测 iCloud-only 文件，报告数量/大小/预估下载空间，批量下载带进度，验证所有文件已本地化 |
+| 🧹 **下游脚本 iCloud 过滤** | `find_exact_duplicates.py --exclude-icloud` 和 `find_similar_photos.py --exclude-icloud` — 去重时跳过不可靠的 iCloud 占位文件哈希/pHash |
+| 📊 **增强库健康报告** | `library_stats.py` 新增 iCloud 详细状态：占位文件数、已下载数、下载失败数 — 终端和 HTML 报告均显示 |
+| 📦 **共享 iCloud 模块** | `icloud_utils.py` — 整合 `check_icloud_status()`、`download_icloud_file()`、`is_likely_thumbnail()`、`batch_download()` 为单一可复用模块 |
 
 ## v3.11 新功能
 

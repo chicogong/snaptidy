@@ -58,8 +58,12 @@ except ImportError:
 # Mode 1: pHash matching (original behavior)
 # ---------------------------------------------------------------------------
 
-def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
-    """Group by pHash from SQLite database."""
+def group_by_phash_db(index_path: str, threshold: int = 0, exclude_icloud: bool = False) -> list:
+    """Group by pHash from SQLite database.
+
+    Args:
+        exclude_icloud: if True, skip files marked as iCloud placeholders
+    """
     conn = sqlite3.connect(index_path)
 
     # Check if phash column exists
@@ -70,6 +74,11 @@ def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
             print("  ⚠️  phash column not found in index — pHash detection skipped", file=sys.stderr)
             print("     Run scan_photos.py or scan_photos_library.py first to compute phash", file=sys.stderr)
         return []
+
+    # Build iCloud exclusion filter
+    icloud_filter = ""
+    if exclude_icloud and "icloud_state" in available_cols:
+        icloud_filter = " AND icloud_state NOT IN ('icloud_placeholder', 'download_failed')"
 
     # All-zeros phash (e.g. from tiny/simple images) is meaningless — skip it
     INVALID_PHASH = "0000000000000000"
@@ -87,11 +96,13 @@ def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
             WHERE phash != '' AND phash IS NOT NULL
             AND phash != ?
             {dim_filter}
+            {icloud_filter}
             AND phash IN (
                 SELECT phash FROM photos
                 WHERE phash != '' AND phash IS NOT NULL
                 AND phash != ?
                 {dim_filter}
+                {icloud_filter}
                 GROUP BY phash
                 HAVING COUNT(*) > 1
             )
@@ -124,6 +135,7 @@ def group_by_phash_db(index_path: str, threshold: int = 0) -> list:
             WHERE phash != '' AND phash IS NOT NULL
             AND phash != ?
             {dim_filter}
+            {icloud_filter}
             ORDER BY phash
         """, (INVALID_PHASH,))
         all_entries = [(row[0], row[1]) for row in cursor]
@@ -370,7 +382,8 @@ def _is_scaled_pair(w1: int, h1: int, w2: int, h2: int) -> bool:
     return False
 
 
-def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_PHASH_THRESHOLD) -> list:
+def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_PHASH_THRESHOLD,
+                               exclude_icloud: bool = False) -> list:
     """Detect scaled duplicates: same photo at different resolutions.
 
     Algorithm:
@@ -385,15 +398,21 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
     conn = sqlite3.connect(index_path)
     conn.row_factory = sqlite3.Row
 
+    available_cols = {r[1] for r in conn.execute("PRAGMA table_info(photos)").fetchall()}
+    icloud_filter = ""
+    if exclude_icloud and "icloud_state" in available_cols:
+        icloud_filter = " AND icloud_state NOT IN ('icloud_placeholder', 'download_failed')"
+
     # Load all images with dimensions and phash
     try:
-        cursor = conn.execute("""
+        cursor = conn.execute(f"""
             SELECT file_path, width, height, phash, aspect_ratio, extension, size_bytes
             FROM photos
             WHERE phash != '' AND phash IS NOT NULL
             AND phash != '0000000000000000'
             AND width != '' AND height != '' AND width != '0' AND height != '0'
             AND media_type = 'image'
+            {icloud_filter}
         """)
     except sqlite3.OperationalError as e:
         conn.close()
@@ -580,7 +599,8 @@ CROSS_FORMAT_PHASH_THRESHOLD = 5
 # small differences. Threshold 5 is generous; most true matches are ≤ 2.
 
 
-def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CROSS_FORMAT_PHASH_THRESHOLD) -> list:
+def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CROSS_FORMAT_PHASH_THRESHOLD,
+                                     exclude_icloud: bool = False) -> list:
     """Detect cross-format duplicates: same photo in different formats.
 
     Typical scenario: iPhone shoots HEIC, exports JPEG — both exist on disk.
@@ -598,9 +618,14 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
     conn = sqlite3.connect(index_path)
     conn.row_factory = sqlite3.Row
 
+    available_cols = {r[1] for r in conn.execute("PRAGMA table_info(photos)").fetchall()}
+    icloud_filter = ""
+    if exclude_icloud and "icloud_state" in available_cols:
+        icloud_filter = " AND icloud_state NOT IN ('icloud_placeholder', 'download_failed')"
+
     # Load all images with dimensions and phash
     try:
-        cursor = conn.execute("""
+        cursor = conn.execute(f"""
             SELECT file_path, width, height, phash, aspect_ratio, format_family,
                    extension, size_bytes
             FROM photos
@@ -609,6 +634,7 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
             AND width != '' AND height != '' AND width != '0' AND height != '0'
             AND media_type = 'image'
             AND format_family != ''
+            {icloud_filter}
         """)
     except sqlite3.OperationalError as e:
         conn.close()
@@ -1148,20 +1174,21 @@ def detect_cnn_similar_db(index_path: str, threshold: float = 0.90,
 # ---------------------------------------------------------------------------
 
 def detect_all_db(index_path: str, phash_threshold: int = 0,
-                  cnn_threshold: float = 0.90, apple_ql_threshold: float = 0.92) -> list:
+                  cnn_threshold: float = 0.90, apple_ql_threshold: float = 0.92,
+                  exclude_icloud: bool = False) -> list:
     """Run all duplicate detection methods and merge results."""
     all_results = []
 
     # pHash matching
-    phash_results = group_by_phash_db(index_path, threshold=phash_threshold)
+    phash_results = group_by_phash_db(index_path, threshold=phash_threshold, exclude_icloud=exclude_icloud)
     all_results.extend(phash_results)
 
     # Scaled duplicates
-    scaled_results = detect_scaled_duplicates_db(index_path)
+    scaled_results = detect_scaled_duplicates_db(index_path, exclude_icloud=exclude_icloud)
     all_results.extend(scaled_results)
 
     # Cross-format duplicates
-    cross_results = detect_cross_format_duplicates_db(index_path)
+    cross_results = detect_cross_format_duplicates_db(index_path, exclude_icloud=exclude_icloud)
     all_results.extend(cross_results)
 
     # Burst detection
@@ -1424,6 +1451,8 @@ def main() -> None:
                         help=f"Hamming distance threshold for scaled duplicate verification (default: {SCALED_PHASH_THRESHOLD})")
     parser.add_argument("--cross-format-threshold", type=int, default=CROSS_FORMAT_PHASH_THRESHOLD,
                         help=f"Hamming distance threshold for cross-format verification (default: {CROSS_FORMAT_PHASH_THRESHOLD})")
+    parser.add_argument("--exclude-icloud", action="store_true",
+                        help="Exclude iCloud placeholder files (their pHash/SHA-256 is unreliable)")
     args = parser.parse_args()
     index_path = os.path.abspath(args.index)
     output_path = os.path.abspath(args.output)
@@ -1454,19 +1483,19 @@ def main() -> None:
             print("⚠️  imagehash not installed — skipping pHash detection. Install with: pip install imagehash", file=sys.stderr)
             method_stats["pHash"] = (0, 0)
         else:
-            phash_results = group_by_phash_db(index_path, threshold=args.threshold)
+            phash_results = group_by_phash_db(index_path, threshold=args.threshold, exclude_icloud=args.exclude_icloud)
             all_results.extend(phash_results)
             n = len(set(e["group_id"] for e in phash_results)) if phash_results else 0
             method_stats["pHash"] = (len(phash_results), n)
 
     if run_scaled:
-        scaled_results = detect_scaled_duplicates_db(index_path, phash_threshold=args.scaled_threshold)
+        scaled_results = detect_scaled_duplicates_db(index_path, phash_threshold=args.scaled_threshold, exclude_icloud=args.exclude_icloud)
         all_results.extend(scaled_results)
         n = len(set(e["group_id"] for e in scaled_results)) if scaled_results else 0
         method_stats["Scaled"] = (len(scaled_results), n)
 
     if run_cross:
-        cross_results = detect_cross_format_duplicates_db(index_path, phash_threshold=args.cross_format_threshold)
+        cross_results = detect_cross_format_duplicates_db(index_path, phash_threshold=args.cross_format_threshold, exclude_icloud=args.exclude_icloud)
         all_results.extend(cross_results)
         n = len(set(e["group_id"] for e in cross_results)) if cross_results else 0
         method_stats["Cross-format"] = (len(cross_results), n)
@@ -1511,6 +1540,8 @@ def main() -> None:
 
     total_groups = len(set(e["group_id"] for e in all_results)) if all_results else 0
     print(f"Found {len(all_results)} images in {total_groups} groups.")
+    if args.exclude_icloud:
+        print("  (iCloud placeholder files excluded)")
 
     for method, (count, groups) in method_stats.items():
         if count > 0:
