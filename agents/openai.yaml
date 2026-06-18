@@ -1,0 +1,7 @@
+interface:
+  display_name: "SnapTidy"
+  short_description: "Safely organize and audit macOS photo libraries"
+  default_prompt: "Use $snaptidy to inspect my photo collection and prepare a safe, reviewable organization plan."
+
+policy:
+  allow_implicit_invocation: true

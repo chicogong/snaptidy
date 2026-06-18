@@ -7,7 +7,7 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/Version-3.14.0-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.14.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 [![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > AI-powered photo & video organizer for macOS. Deduplicate photos, find similar images via perceptual hashing (pHash) and Apple ML vectors, fix EXIF metadata, and restructure your library — safely, through natural-language conversation. Zero-risk, read-only scan with human-approved actions. Open source, MIT licensed.
@@ -34,7 +34,7 @@
 | Video deduplication | ✓ | ~ | ✗ |
 | Live Photo protection | ✓ | ~ | ✗ |
 | Google Takeout import | ✓ | ✗ | ✗ |
-| Quality assessment (blur/brightness/contrast) | ✓ | ~ | ✗ |
+| Quality assessment (7-dimension scoring) | ✓ | ~ | ✗ |
 | macOS Trash recovery | ✓ | ~ | ✗ |
 | Free & open source | ✓ | ✗ | ~ |
 
@@ -287,7 +287,7 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 3. **Review** — Interactive HTML page to browse duplicates side-by-side, apply smart strategy rules, mark keep/remove
 4. **Generate Plan** — Smart multi-factor scoring decides which duplicate to keep. Supports configurable strategies and folder preferences
 5. **Apply** — Open the CSV plan, verify everything looks right, then apply. Choose between move-to-folder or macOS Trash (recoverable)
-6. **Undo** — Reverse the most recent move operation within 30 days
+6. **Undo** — Reverse the most recent normal folder move within 30 days; Trash uses its native recovery
 
 ## Safety Guarantees
 
@@ -295,6 +295,7 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 |-----------|-----|
 | No automatic deletion | All scripts are read-only by default; `apply_move_plan.py` only moves files |
 | macOS Trash mode | Use `--mode trash` to move to Trash — recoverable via Finder → Put Back |
+| Photos.app trash mode | Recover from Photos.app → Recently Deleted while its retention window applies |
 | Human review required | Move plans are CSV files you can inspect in any spreadsheet app |
 | Full audit trail | Every move is logged to `move_log.csv` with source, destination, status, and reason |
 | Zero data loss | Streaming SQLite writes with per-entry commit — crash loses at most one entry |
@@ -360,11 +361,15 @@ python3 scripts/generate_preview.py \
     --index ./photo_index.db \
     --output ./preview.html
 
-# Step 6: Review move_plan.csv, then apply
-python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
+# Step 6: Review move_plan.csv, then apply a normal reversible move
+python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode move
 
-# Step 7: Undo if needed
+# Step 7: Undo the normal move if needed (30-day record)
 python3 scripts/apply_move_plan.py --plan ./move_plan.csv --undo
+
+# Alternative after separate confirmation: move to macOS Trash
+# Recover with Finder → Put Back; CLI --undo does not apply to Trash.
+python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
 ```
 
 <p align="center">

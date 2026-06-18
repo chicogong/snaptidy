@@ -5,6 +5,56 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.1] - 2026-06-18
+
+### Changed
+
+- **SKILL.md restored and expanded** — Codex's rewrite dropped 7 scripts
+  from the intent routing table; all restored: `generate_review.py`,
+  `detect_bad_extensions.py`, `detect_corrupted.py`, `library_stats.py`,
+  `generate_timeline.py`, `compress_photos.py`, `verify_backup.py`,
+  `detect_privacy_risks.py`, `rename_photos.py`. Strategy table
+  (`quality`/`oldest`/`newest`/`folder`) restored as inline note.
+  `license: MIT` added to frontmatter per agentskills.io spec.
+
+- **Contract test relaxed** — `test_frontmatter_is_portable` now allows
+  optional fields (`license`, `compatibility`, `allowed-tools`, `metadata`)
+  per the agentskills.io specification, instead of hard-enforcing only
+  `name` + `description`.
+
+- **Safety-first rewrite** — Codex rewrote `references/safety.md` with
+  non-negotiable rules, operation classes (read-only / reversible writes /
+  special recovery), confirmation thresholds, and source-specific checks.
+  Correctly distinguishes 3 recovery mechanisms: normal move `--undo`
+  (30-day JSON record), macOS Trash (Finder > Put Back), Photos.app
+  (Recently Deleted).
+
+- **Intent routing table** — Codex added a routing table mapping user
+  intents to starting scripts and reference docs.
+
+- **Contract test suite** — new `scripts/test_skill_contract.py` with 8
+  tests validating frontmatter portability, core conciseness, safety
+  invariants, local link resolution, documented scripts existence,
+  release version consistency, OpenAI adapter format, and CLI help.
+
+- **OpenAI adapter** — new `agents/openai.yaml` for cross-agent
+  portability.
+
+- **clawhub.yaml synced** — version 3.3.0 → 3.14.0, description and tags
+  updated to reflect v3.14 features.
+
+- **README safety corrections** — default mode changed from `trash` to
+  `move` (safer), undo scope clarified (normal moves only, not Trash),
+  Photos.app trash mode added to safety table.
+
+- **CI integration** — contract test added to `.github/workflows/ci.yml`
+  before integration tests.
+
+### Removed
+
+- `docs/superpowers/` — Codex's internal design/plan documents, not
+  needed in the published repository.
+
 ## [3.14.0] - 2026-06-18
 
 ### Added

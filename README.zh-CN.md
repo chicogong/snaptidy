@@ -7,7 +7,7 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/Version-3.14.0-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.14.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 [![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > macOS 照片视频整理去重工具。通过感知哈希 (pHash)、Apple ML 特征向量和 SHA-256 检测重复照片，支持跨格式去重（HEIC↔JPEG）、EXIF 修复、GPS 逆地理编码。AI 对话驱动，只读扫描，人工确认后操作，零风险。开源免费 (MIT)。
@@ -274,7 +274,7 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 3. **审核** — 交互式 HTML 页面，并排浏览重复项，应用智能策略规则，标记保留/移除
 4. **生成计划** — 智能多因素评分决定保留哪张，支持可配置策略和文件夹偏好
 5. **执行** — 确认 CSV 计划后执行，可选移至文件夹或废纸篓（可恢复）
-6. **撤销** — 30 天内可撤销最近一次移动操作
+6. **撤销** — 30 天内可撤销最近一次普通文件夹移动；废纸篓操作使用系统恢复方式
 
 ## 安全保证
 
@@ -282,6 +282,7 @@ cd ~/.workbuddy/skills/snaptidy && pip install -r requirements.txt
 |------|----------|
 | 无自动删除 | 所有脚本默认只读，`apply_move_plan.py` 只移动文件 |
 | macOS 废纸篓模式 | 使用 `--mode trash` 移至废纸篓，可通过 Finder 恢复 |
+| Photos.app 废纸篓模式 | 在系统保留期内从 Photos.app → 最近删除中恢复 |
 | 需人工审核 | 移动计划为 CSV 文件，可用电子表格查看 |
 | 完整审计跟踪 | 每次移动都记录到 `move_log.csv`，含源、目标、状态和原因 |
 | 零数据丢失 | 流式 SQLite 逐条写入，崩溃最多丢失一条记录 |
@@ -347,11 +348,15 @@ python3 scripts/generate_preview.py \
     --index ./photo_index.db \
     --output ./preview.html
 
-# 第 6 步：审核移动计划后执行
-python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
+# 第 6 步：审核移动计划后执行普通可撤销移动
+python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode move
 
-# 第 7 步：如需撤销
+# 第 7 步：如需撤销普通移动（记录保留 30 天）
 python3 scripts/apply_move_plan.py --plan ./move_plan.csv --undo
+
+# 另一种选择（需单独确认）：移至 macOS 废纸篓
+# 请使用 Finder“放回原处”恢复；CLI --undo 不适用于废纸篓。
+python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
 ```
 
 <p align="center">

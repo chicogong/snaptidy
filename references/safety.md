@@ -1,15 +1,82 @@
-# Safety guidelines for photo organisation
+# Safety and recovery
 
-The scripts in this skill are intentionally conservative.  They never delete files and only move files when explicitly requested.  Follow these best practices when organising your photo library:
+Load this reference before any operation that can move files, edit metadata,
+import media, change Photos.app, or send items to Trash.
 
-1. **Always back up your data** – Before running any scripts, ensure you have at least two copies of your photos on separate drives (e.g. a primary archive and a backup).  Remember that iCloud Photos is a synchronisation service, not a backup【916029002888395†L64-L99】.
+## Non-negotiable rules
 
-2. **Export from Photos.app** – If your photos live inside the Photos Library package, export your originals using Photos.app (“File → Export → Export Unmodified Original”) into a normal folder before scanning.  Never run the scanner inside a `.photoslibrary` bundle.  Apple warns that modifying the library package may corrupt the database【986209175665060†L334-L365】.
+1. Never implement or invoke permanent deletion.
+2. Never modify files or databases inside `.photoslibrary` or `.photolibrary`
+   packages directly.
+3. Generate and review a plan before a state-changing operation.
+4. Obtain explicit user confirmation for the exact plan and operation mode.
+5. Preserve CSV audit logs and report their paths.
+6. Verify backups before metadata repair, conversion, rename, or bulk movement.
+7. Keep Live Photo components together and exclude unreliable iCloud
+   placeholders from hash-based decisions.
 
-3. **Run in read‑only mode** – The scanning and reporting scripts (`scan_photos.py`, `find_exact_duplicates.py`, etc.) do not modify any files.  Only `apply_move_plan.py` will move files, and it should be run after reviewing the plan.
+Use `scan_photos_library.py` for read-only Photos.app indexing. Use the supported
+Photos APIs through SnapTidy for Photos.app changes so its database remains
+consistent.
 
-4. **Skip system and backup directories** – Do not point the scanner at system folders (e.g. `/System` or `/Library`) or backup destinations.  The script automatically skips directories whose names end with `Original_Backup_勿动` to prevent accidental modifications, but you should verify your input path.
+## Operation classes
 
-5. **Review the plan** – After generating a move plan, open the CSV in a spreadsheet to verify that every action makes sense.  You can edit the plan to remove or adjust moves before applying it.  This mirrors the principle of dry‑run vs. execution adopted by other macOS automation skills【89536604787346†L71-L84】.
+### Read-only
 
-6. **Seek confirmation** – When using this skill in a larger agent, ensure that the user has explicitly confirmed before invoking `apply_move_plan.py`.  Do not blindly execute move operations in an automated workflow.
+Scanning, duplicate detection, previews, reports, statistics, and dry runs do
+not intentionally change source media. Store their outputs outside the source
+tree. These operations do not require move confirmation once the source path is
+known.
+
+### Reversible writes
+
+Normal folder moves performed by `apply_move_plan.py --mode move` create a JSON
+undo record in an `undo_records/` directory. The record expires after 30 days.
+Reverse the latest eligible move with:
+
+```bash
+python3 scripts/apply_move_plan.py --plan /path/to/move_plan.csv --undo
+```
+
+EXIF edits create backups by default. Keep backups until the result is verified.
+Do not use `--no-backup` unless the user explicitly accepts the reduced safety.
+
+### Special recovery
+
+Trash operations do not use SnapTidy's JSON undo records:
+
+- Recover `--mode trash` operations with Finder > Put Back.
+- Recover `--mode photos-trash` operations from Photos.app > Recently Deleted
+  while the system retention window still applies.
+
+Never tell a user to run `--undo` for either Trash mode.
+
+## Confirmation thresholds
+
+- For 1–9 moves, present the summary and request `[Y/n]` confirmation.
+- For 10 or more moves, require the user to type `yes`.
+- A previous request to scan, preview, or generate a plan is not approval to
+  apply that plan.
+
+The confirmation summary must include the number of actions, total bytes,
+source, destination, operation mode, iCloud exclusions, Live Photo handling,
+and the applicable recovery mechanism.
+
+## Source-specific checks
+
+- Normal folders: reject system directories and warn when source and target
+  overlap unexpectedly.
+- Photos.app: request Full Disk Access when required; never traverse the library
+  package with the normal folder scanner.
+- iCloud-optimized sources: use warn, skip, or download handling before dedup;
+  do not trust placeholder hashes.
+- External drives and Android devices: confirm the mount remains available
+  through scanning and import.
+- Shared albums: treat them as read-only; import into a regular album and let
+  the user perform any supported manual shared-album step.
+
+## Completion report
+
+Report whether the operation was read-only or state-changing, the successful,
+skipped, and failed counts, the audit and undo-record paths, and the exact
+recovery action. Never imply that a generated plan was applied.

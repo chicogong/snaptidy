@@ -1,91 +1,163 @@
 ---
 name: snaptidy
-version: 3.14.0
-description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst + Apple ML vectors + CNN), assess quality (7-dimension scoring), organize by date/category/location, create Photos.app albums, reverse geocode GPS, edit EXIF, handle iCloud placeholders, convert formats, and more. Zero-install core (Python stdlib only).
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "照片库健康", "library stats", "按地点整理", "逆地理编码", "移除GPS", "EXIF编辑", "照片质量", "Live Photo", "corrupted photo", "损坏图片", "fix date", "修正日期", "backup verify", "备份验证", "iCloud优化", "check icloud", "照片旋转", "格式转换", "JPEG转WEBP", "GPS推断", "动图检测", "bad extension", "扩展名校验"
-author: chicogong
+description: Use when organizing, deduplicating, importing, auditing, repairing, or reporting on macOS photo and video collections, including folders, Photos.app libraries, external drives, Android imports, iCloud placeholders, EXIF or GPS metadata, Live Photos, corrupted media, quality scoring, 整理照片, 照片去重, 整理相册, 写真整理, or 사진 정리.
 license: MIT
-homepage: https://github.com/chicogong/snaptidy
-compatibility: "Claude Code, Cursor, Windsurf, OpenClaw, WorkBuddy, Cline, Aider"
-metadata:
-  openclaw:
-    always: false
-    emoji: "🗂️"
-    os:
-      - darwin
-    requires:
-      bins:
-        - python3
-    install:
-      - kind: pip
-        packages: [Pillow, piexif, imagehash, pillow-heif]
 ---
 
-# SnapTidy — Photo & Video Organizer
+# SnapTidy
 
-## When to Use
+Organize macOS photo and video collections through a reviewable pipeline:
+scan, detect, preview, plan, confirm, apply, and report.
 
-Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, create albums by date/category/format, reverse geocoding (GPS→place names), EXIF editing, quality assessment, Live Photo detection, timeline viewer, Google Takeout import, GPX geotagging, event clustering, video dedup, smart rename, corrupted file detection, bad extension detection, date correction, backup verification, iCloud optimization.
+## Safety contract
 
-## Safety Rules — MANDATORY
+- Never permanently delete files. SnapTidy may move files to a review folder,
+  macOS Trash, or Photos.app Recently Deleted only after confirmation.
+- Never modify `.photoslibrary` or `.photolibrary` packages directly. Use
+  `scan_photos_library.py` for read-only indexing and Photos APIs for changes.
+- Treat scanning, detection, previews, reports, and dry runs as read-only.
+- Present the exact plan and obtain explicit confirmation before every move,
+  metadata write, Photos.app change, import, or Trash operation.
+- Keep the CSV audit trail and report its path after a state-changing operation.
+- Detect Live Photo pairs before moving duplicates and keep each pair together.
+- Account for iCloud placeholders before comparing hashes or perceptual hashes.
+- Never claim all operations share one recovery path. Normal moves, macOS Trash,
+  and Photos.app trash use different recovery mechanisms.
+- Shared albums are read-only. Do not promise programmatic writes to them.
 
-- **NEVER delete originals** — all scripts are read-only by default
-- **NEVER permanently delete** — use Trash mode or move to review folder
-- **Ask before moving** — ALWAYS present plan and get confirmation
-- **Fast/Safe path** — 1-9 moves: `[Y/n]`; 10+ moves: require explicit `"yes"`
-- **Undo available** — `--undo` reverses last operation (30-day expiry)
-- **Shared albums are read-only** — Apple blocks all programmatic writes to shared albums
+Read [safety.md](references/safety.md) before any state-changing workflow.
 
-## Quick Start
+## Start every task
+
+1. Identify the source: normal folder, external drive, Android storage,
+   Photos.app library, Google Takeout, or existing SQLite/CSV index.
+2. Confirm the host is macOS before using Photos.app, CoreLocation, `brctl`,
+   Finder Trash, or AppleScript integrations.
+3. Inspect `python3 scripts/<tool>.py --help` before composing uncommon options.
+4. Write generated indexes, reports, plans, and logs outside the source tree.
+5. Prefer SQLite for large libraries; use CSV only when manual inspection or
+   interoperability is more important.
+6. Check backups before repair, conversion, rename, import, or move operations.
+
+## Route by intent
+
+| User intent | Start with | Load |
+|---|---|---|
+| Quick folder duplicate check | `quick_scan.py` | [detection.md](references/detection.md) |
+| Full folder organization | `organize_photos.py` or the staged workflow below | [features.md](references/features.md) |
+| Photos.app library scan | `scan_photos_library.py` | [safety.md](references/safety.md) |
+| Exact, similar, burst, scaled, or cross-format matches | `find_exact_duplicates.py` / `find_similar_photos.py` | [detection.md](references/detection.md) |
+| Interactive review with keyboard shortcuts | `generate_review.py` | [features.md](references/features.md) |
+| Bad extension / mismatched content | `detect_bad_extensions.py` | [features.md](references/features.md) |
+| Corrupted or unplayable media | `detect_corrupted.py` | [features.md](references/features.md) |
+| Library health report and space analysis | `library_stats.py` | [features.md](references/features.md) |
+| Interactive timeline view | `generate_timeline.py` | [features.md](references/features.md) |
+| Compress photos to save space | `compress_photos.py` | [features.md](references/features.md) |
+| Backup completeness verification | `verify_backup.py` | [features.md](references/features.md) |
+| External drive or Android import | `import_to_photos.py --dry-run` | [import.md](references/import.md) |
+| EXIF, date, GPS, or location work | `edit_exif.py`, `fix_dates.py`, or `fix_gps.py` | [exif-editing.md](references/exif-editing.md), [geocoding.md](references/geocoding.md) |
+| Privacy risk detection | `detect_privacy_risks.py` | [features.md](references/features.md) |
+| Smart rename using metadata | `rename_photos.py` | [features.md](references/features.md) |
+| Performance or very large libraries | parallel/incremental flags | [performance.md](references/performance.md) |
+| Failure or missing dependency | relevant tool `--help` | [troubleshooting.md](references/troubleshooting.md) |
+
+Use `python3 scripts/quick_scan.py --help` for the zero-install path. Install
+optional packages from `requirements.txt` only when the chosen detection or
+metadata workflow needs them.
+
+## Default dedup workflow
+
+Keep the workflow read-only through plan generation.
+
+### 1. Scan
+
+For a normal folder:
 
 ```bash
-pip install -r requirements.txt
-
-# Step 1: Scan photos (folders or Photos.app library)
-python3 scripts/scan_photos.py --source ~/Pictures/Export --output ./photo_index.db
-
-# Step 2: Find duplicates (exact + perceptual + scaled + cross-format)
-python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./duplicates.csv
-python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv --detect-all
-
-# Step 3: Assess quality (7 dimensions: sharpness/exposure/contrast/resolution/format/filesize/EXIF)
-python3 scripts/assess_quality.py --index ./photo_index.db
-
-# Step 4: Generate move plan with strategy
-python3 scripts/generate_move_plan.py --duplicates ./similar.csv --index ./photo_index.db \
-    --plan ./move_plan.csv --target-root ~/review --strategy quality
-
-# Step 5: Preview with HTML thumbnails
-python3 scripts/generate_preview.py --duplicates ./similar.csv --index ./photo_index.db --output ./preview.html
-
-# Apply (with undo support)
-python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
+python3 scripts/scan_photos.py \
+  --source /path/to/photos \
+  --output ./snaptidy-output/photo_index.db
 ```
 
-## Strategy Choices
+For Photos.app, point the library scanner at the library package; do not run the
+folder scanner inside it:
 
-| Strategy | Keeps | Best for |
-|----------|-------|----------|
-| `quality` (default) | Best quality score (7-dimension) | General cleanup |
-| `oldest` | Earliest capture date | Keep originals |
-| `newest` | Latest modification date | Keep final edits |
-| `folder` | Files from preferred folder | Keep camera originals |
+```bash
+python3 scripts/scan_photos_library.py \
+  --source "$HOME/Pictures/Photos Library.photoslibrary" \
+  --output ./snaptidy-output/photo_index.db
+```
 
-## Process
+### 2. Detect
 
-1. **Scan** — `scan_photos.py` (folders) or `scan_photos_library.py` (Photos.app)
-2. **Find duplicates** — `find_exact_duplicates.py` (SHA-256) or `find_similar_photos.py --detect-all` (8 modes)
-3. **Assess quality** — `assess_quality.py` (7-dimension scoring)
-4. **Detect issues** — `detect_corrupted.py`, `detect_bad_extensions.py`, `detect_live_photos.py`
-5. **Review & decide** — `generate_review.py` → Interactive HTML page with smart rules
-6. **Generate plan** — `generate_move_plan.py --strategy quality|oldest|newest|folder`
-7. **Apply** — `apply_move_plan.py --mode move|trash|photos-trash` (undo via `--undo`)
+```bash
+python3 scripts/find_exact_duplicates.py \
+  --index ./snaptidy-output/photo_index.db \
+  --output ./snaptidy-output/exact.csv \
+  --exclude-icloud
 
-## CLI Conventions
+python3 scripts/find_similar_photos.py \
+  --index ./snaptidy-output/photo_index.db \
+  --output ./snaptidy-output/similar.csv \
+  --detect-all \
+  --exclude-icloud
+```
 
-- `--source` (`--input` / `--library`, `-i` for folders) — photo source
-- `--index` (`-i`) — SQLite metadata index (consumed by dedup/report tools)
-- `--output` (`-o`, also `--report` for HTML producers) — output path
+Run `detect_live_photos.py` before planning moves when the collection may
+contain HEIC+MOV Live Photos. Run `assess_quality.py` before using the `quality`
+strategy.
 
-For detailed feature tables, detection algorithms, priority rules, import workflow, iCloud integration, performance benchmarks, and troubleshooting, see `references/` (especially `references/features.md`).
+### 3. Preview and plan
+
+```bash
+python3 scripts/generate_move_plan.py \
+  --duplicates ./snaptidy-output/similar.csv \
+  --index ./snaptidy-output/photo_index.db \
+  --plan ./snaptidy-output/move_plan.csv \
+  --target-root ./snaptidy-output/review \
+  --strategy quality
+
+python3 scripts/generate_preview.py \
+  --duplicates ./snaptidy-output/similar.csv \
+  --index ./snaptidy-output/photo_index.db \
+  --plan ./snaptidy-output/move_plan.csv \
+  --output ./snaptidy-output/preview.html
+```
+
+**Plan strategies** (`--strategy`): `quality` (keep highest score, requires
+`assess_quality.py` first) · `oldest` (keep earliest capture) · `newest`
+(keep latest) · `folder` (keep deepest nested). Use `generate_review.py`
+for an interactive review page with keyboard shortcuts before applying.
+
+Summarize file counts, match types, bytes affected, keep/move decisions,
+destination, iCloud exclusions, and Live Photo handling before asking to apply.
+
+## Confirmation and recovery
+
+- For 1–9 planned moves, show the plan summary and request `[Y/n]` confirmation.
+- For 10 or more moves, require the user to type `yes`; do not infer consent.
+- After confirmation, apply normal folder moves with:
+
+```bash
+python3 scripts/apply_move_plan.py \
+  --plan ./snaptidy-output/move_plan.csv \
+  --mode move
+```
+
+- Normal folder moves create a 30-day undo record. Reverse the latest eligible
+  move with `python3 scripts/apply_move_plan.py --plan <plan.csv> --undo`.
+- Trash operations cannot be undone with `--undo`. Recover macOS Trash items
+  with Finder > Put Back.
+- Recover Photos.app trash operations from Photos.app > Recently Deleted while
+  the system retention window still applies.
+
+## Completion report
+
+State:
+
+- Which source and scan mode were used.
+- Which index, duplicate reports, previews, and plans were created.
+- Whether files or metadata changed; never imply a plan was already applied.
+- The number of successful, skipped, and failed actions.
+- The audit log and undo-record paths, when applicable.
+- The exact recovery action for the selected operation mode.

@@ -37,5 +37,8 @@ jobs:
       - name: Install optional dependencies
         run: pip install Pillow piexif imagehash pillow-heif
 
+      - name: Validate public skill contract
+        run: python scripts/test_skill_contract.py
+
       - name: Run v3.13 integration tests
         run: python scripts/test_v313_integration.py
