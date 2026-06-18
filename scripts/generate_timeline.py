@@ -215,32 +215,52 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
   .photo-thumb { width: 80px; height: 80px; }
   .year-header h2 { font-size: 22px; }
 }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  body { background: #1c1c1e; color: #e5e5e7; }
+  .header { background: #2c2c2e; border-bottom-color: #38383a; }
+  .header h1 { color: #e5e5e7; }
+  .controls select { background: #2c2c2e; border-color: #48484a; color: #e5e5e7; }
+  .controls .stat { color: #98989d; }
+  .year-header { background: #2c2c2e; }
+  .year-header:hover { background: #3a3a3c; }
+  .year-header .count { color: #98989d; }
+  .year-header .toggle { color: #98989d; }
+  .month-header { background: #2c2c2e; }
+  .month-header:hover { background: #3a3a3c; }
+  .month-count { color: #98989d; }
+  .day-header { color: #98989d; }
+  .photo-thumb { background: #3a3a3c; }
+  .empty { color: #636366; }
+  .empty h3 { color: #98989d; }
+}
 </style>
 </head>
 <body>
 <div class="header">
   <h1>📸 SnapTidy Timeline</h1>
   <div class="controls">
-    <label>Zoom:</label>
+    <label>缩放:</label>
     <select id="zoom" onchange="applyZoom()">
-      <option value="day">Day</option>
-      <option value="month">Month</option>
-      <option value="year">Year</option>
+      <option value="day">日</option>
+      <option value="month">月</option>
+      <option value="year">年</option>
     </select>
-    <label>Category:</label>
+    <label>类别:</label>
     <select id="category" onchange="applyFilter()">
-      <option value="all">All</option>
-      <option value="photo">Photo</option>
-      <option value="screenshot">Screenshot</option>
-      <option value="wechat">WeChat</option>
-      <option value="burst">Burst</option>
-      <option value="video">Video</option>
+      <option value="all">全部</option>
+      <option value="photo">照片</option>
+      <option value="screenshot">截图</option>
+      <option value="wechat">微信</option>
+      <option value="burst">连拍</option>
+      <option value="video">视频</option>
     </select>
-    <button onclick="collapseAll()">Collapse All</button>
-    <button onclick="expandAll()">Expand All</button>
-    <label>Event:</label>
+    <button onclick="collapseAll()">全部折叠</button>
+    <button onclick="expandAll()">全部展开</button>
+    <label>事件:</label>
     <select id="eventFilter" onchange="applyFilter()">
-      <option value="all">All Events</option>
+      <option value="all">全部事件</option>
     </select>
     <span class="stat" id="stats"></span>
   </div>
@@ -251,7 +271,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-
 const DATA = %%TIMELINE_DATA%%;
 
 function monthName(m) {
-  return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][parseInt(m)-1] || m;
+  return parseInt(m) + '月';
 }
 
 function categoryBadge(cat) {
@@ -281,7 +301,7 @@ function populateEventFilter() {
     return;
   }
   const sel = document.getElementById('eventFilter');
-  sel.innerHTML = '<option value="all">All Events</option>';
+  sel.innerHTML = '<option value="all">全部事件</option>';
   for (const [eid, ev] of Object.entries(DATA.events)) {
     sel.innerHTML += `<option value="${eid}">${ev.name} (${ev.photo_count})</option>`;
   }
@@ -314,7 +334,7 @@ function renderTimeline() {
 
         const dayLabel = `${parseInt(d.day)} ${monthName(m.month)}`;
         const dayPhotos = photos.map(p => {
-          const thumb = p.thumb ? `<img src="data:image/jpeg;base64,${p.thumb}" alt="">` : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:10px;color:#86868b;">No preview</div>`;
+          const thumb = p.thumb ? `<img src="data:image/jpeg;base64,${p.thumb}" alt="">` : `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;font-size:10px;color:#86868b;">无预览</div>`;
           return `<div class="photo-thumb" title="${p.filename}\n${(p.camera_make||'')} ${(p.camera_model||'')}\n${p.size_str||''}">${thumb}${categoryBadge(p.category)}${qualityBadge(p.quality_score||-1)}${eventTag(p.event_id||'')}</div>`;
         }).join('');
 
@@ -352,7 +372,7 @@ function renderTimeline() {
       }
 
       const monthVis = zoom === 'year' ? 'style="display:none"' : '';
-      yearHtml += `<div class="month-section" ${monthVis}><div class="month-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="month-name">${monthLabel}</span><span class="month-count">${monthShown} photos</span></div>${monthHtml}</div>`;
+      yearHtml += `<div class="month-section" ${monthVis}><div class="month-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'"><span class="month-name">${monthLabel}</span><span class="month-count">${monthShown} 张</span></div>${monthHtml}</div>`;
       yearShown += monthShown;
     }
 
@@ -363,14 +383,14 @@ function renderTimeline() {
     let eventHtml = '';
     if (Object.keys(yearEvents).length > 0 && zoom !== 'year') {
       for (const [eid, ev] of Object.entries(yearEvents)) {
-        eventHtml += `<div class="event-banner"><span class="event-name">📍 ${ev.name}</span><span class="event-dates">${ev.start_date} ~ ${ev.end_date} · ${ev.photo_count} photos</span></div>`;
+        eventHtml += `<div class="event-banner"><span class="event-name">📍 ${ev.name}</span><span class="event-dates">${ev.start_date} ~ ${ev.end_date} · ${ev.photo_count} 张</span></div>`;
       }
     }
 
     html += `<div class="year-block">
       <div class="year-header" onclick="toggleYear(this)">
         <h2>${y.year}</h2>
-        <span class="count">${yearShown} photos</span>
+        <span class="count">${yearShown} 张</span>
         <span class="toggle">▼</span>
       </div>
       ${eventHtml}
@@ -379,10 +399,10 @@ function renderTimeline() {
   }
 
   if (!html) {
-    html = '<div class="empty"><h3>No photos found</h3><p>Try adjusting the category or event filter</p></div>';
+    html = '<div class="empty"><h3>未找到照片</h3><p>试试调整类别或事件筛选</p></div>';
   }
   container.innerHTML = html;
-  document.getElementById('stats').textContent = `${totalShown} photos shown`;
+  document.getElementById('stats').textContent = `共 ${totalShown} 张`;
 }
 
 function toggleYear(el) {

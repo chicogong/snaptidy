@@ -107,7 +107,7 @@ def generate_preview_html(duplicates_csv: str, index_db: str, move_plan_csv: str
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SnapTidy — Duplicate Preview</title>
+<title>SnapTidy — 重复照片预览</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -144,10 +144,42 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
 .no-thumb { display: flex; align-items: center; justify-content: center;
             width: 100%; aspect-ratio: 1; background: #f0f0f0; border-radius: 6px;
             color: #86868b; font-size: 12px; margin-bottom: 8px; }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  body { background: #1c1c1e; color: #e5e5e7; }
+  h1 { color: #e5e5e7; }
+  .subtitle { color: #98989d; }
+  .group { background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .group-header { border-bottom-color: #38383a; }
+  .match-type { background: #3a3a3c; color: #c7c7cc; }
+  .card { border-color: #38383a; }
+  .card.keep { background: #1a2e1e; }
+  .card.move { background: #2e2a1a; }
+  .thumbnail { background: #3a3a3c; }
+  .no-thumb { background: #3a3a3c; color: #636366; }
+  .meta { color: #98989d; }
+  .meta strong { color: #e5e5e7; }
+  .filename { color: #e5e5e7; }
+  .summary { background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .stat-value { color: #e5e5e7; }
+  .stat-label { color: #98989d; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  body { padding: 12px; }
+  h1 { font-size: 18px; }
+  .summary { flex-direction: column; gap: 12px; padding: 16px; }
+  .stat-value { font-size: 22px; }
+  .group { padding: 12px; }
+  .cards { flex-direction: column; }
+  .card { min-width: 100%; max-width: 100%; }
+}
 </style>
 </head>
 <body>
-<h1>SnapTidy Duplicate Preview</h1>
+<h1>SnapTidy 重复照片预览</h1>
 """)
 
     # Summary stats
@@ -159,8 +191,8 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
         match_type_counts[mt] += 1
 
     html_parts.append(f'<div class="summary">')
-    html_parts.append(f'<div class="stat"><div class="stat-value">{total_groups}</div><div class="stat-label">Duplicate groups</div></div>')
-    html_parts.append(f'<div class="stat"><div class="stat-value">{total_images}</div><div class="stat-label">Images involved</div></div>')
+    html_parts.append(f'<div class="stat"><div class="stat-value">{total_groups}</div><div class="stat-label">重复组数</div></div>')
+    html_parts.append(f'<div class="stat"><div class="stat-value">{total_images}</div><div class="stat-label">涉及图片</div></div>')
     for mt, count in sorted(match_type_counts.items()):
         label = MATCH_TYPE_LABELS.get(mt, mt)
         html_parts.append(f'<div class="stat"><div class="stat-value">{count}</div><div class="stat-label">{label}</div></div>')
@@ -209,9 +241,9 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
             if thumb_b64:
                 thumb_html = f'<img class="thumbnail" src="data:image/jpeg;base64,{thumb_b64}" alt="{fname_escaped}">'
             elif ext in VIDEO_EXTS:
-                thumb_html = '<div class="no-thumb">Video</div>'
+                thumb_html = '<div class="no-thumb">视频</div>'
             else:
-                thumb_html = '<div class="no-thumb">No preview</div>'
+                thumb_html = '<div class="no-thumb">无预览</div>'
 
             # Format size
             try:
@@ -226,10 +258,10 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
   <div class="filename" title="{fname_escaped}">{fname_escaped}</div>
   <div class="meta">
     <strong>{html.escape(str(w))}×{html.escape(str(h))}</strong> · {html.escape(size_str)}<br>
-    Category: <strong>{html.escape(str(cat))}</strong><br>
-    Folder: <strong>{html.escape(str(folder))}</strong><br>
-    EXIF: {"Yes" if has_exif else "No"} · {html.escape(str(camera))}<br>
-    <span style="color:#c7c7cc">hash: {html.escape(phash)}…</span>
+    类别: <strong>{html.escape(str(cat))}</strong><br>
+    文件夹: <strong>{html.escape(str(folder))}</strong><br>
+    EXIF: {"有" if has_exif else "无"} · {html.escape(str(camera))}<br>
+    <span style="color:#c7c7cc">哈希: {html.escape(phash)}…</span>
   </div>
 </div>''')
 
@@ -238,9 +270,9 @@ h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
     if skipped_groups > 0:
         html_parts.append(f'''
 <div class="group" style="text-align:center; padding:30px; color:#86868b;">
-  <p style="font-size:16px;">⚠️ Showing first {max_groups} of {total_groups} groups</p>
-  <p style="font-size:13px;">{skipped_groups} more groups not shown to keep page size manageable.</p>
-  <p style="font-size:13px;">Use <code>--max-groups {total_groups}</code> to show all groups.</p>
+  <p style="font-size:16px;">⚠️ 仅显示前 {max_groups} / {total_groups} 组</p>
+  <p style="font-size:13px;">还有 {skipped_groups} 组未显示，以控制页面大小。</p>
+  <p style="font-size:13px;">使用 <code>--max-groups {total_groups}</code> 显示全部。</p>
 </div>''')
 
     html_parts.append('</body></html>')

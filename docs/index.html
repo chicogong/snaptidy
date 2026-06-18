@@ -41,7 +41,7 @@
         "url": "https://realtime-ai.chat/snaptidy/",
         "applicationCategory": "MultimediaApplication",
         "operatingSystem": "macOS",
-        "softwareVersion": "3.13.1",
+        "softwareVersion": "3.14.0",
         "offers": {
             "@type": "Offer",
             "price": "0",
@@ -79,7 +79,9 @@
             "Format conversion (JPEG/HEIC to WEBP/AVIF)",
             "GPS neighbor inference",
             "Animated image detection (GIF/animated WebP/APNG)",
-            "Decompression bomb protection"
+            "Decompression bomb protection",
+            "Bad extension detection via magic byte signatures",
+            "7-dimension quality scoring (sharpness, exposure, contrast, resolution, format, filesize, EXIF)"
         ],
         "author": {
             "@type": "Person",
@@ -318,7 +320,7 @@
             <span class="badge">MIT License</span>
             <span class="badge">Python 3.9+</span>
             <span class="badge">macOS 13+</span>
-            <span class="badge">30+ Scripts</span>
+            <span class="badge">42 Scripts</span>
             <span class="badge">Zero-Install Core</span>
         </div>
         <div class="cta-group">
@@ -396,6 +398,16 @@
                 <div class="icon">🛡️</div>
                 <h3>Safety-First Design</h3>
                 <p>Read-only scanning, move-only operations, Trash mode with Finder recovery.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔬</div>
+                <h3>7-Dimension Quality Scoring</h3>
+                <p>Sharpness, exposure, contrast, resolution, format, filesize, EXIF — weighted composite score.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📎</div>
+                <h3>Bad Extension Detection</h3>
+                <p>Find files whose actual format (via magic bytes) doesn't match their declared extension.</p>
             </div>
         </div>
     </div>
@@ -478,6 +490,16 @@
                     <td class="check">✓</td>
                     <td class="cross">~</td>
                 </tr>
+                <tr>
+                    <td>7-Dimension Quality Scoring</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Bad Extension Detection</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -520,7 +542,7 @@ python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash</code></p
                 <div class="label">Photos Supported</div>
             </div>
             <div class="stat">
-                <div class="number">30+</div>
+                <div class="number">42</div>
                 <div class="label">Scripts Included</div>
             </div>
             <div class="stat">
@@ -558,7 +580,7 @@ python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash</code></p
         <a href="https://github.com/chicogong/snaptidy/blob/main/LICENSE">MIT License</a> ·
         <a href="https://github.com/chicogong/snaptidy/blob/main/CONTRIBUTING.md">Contributing</a>
     </p>
-    <p style="margin-top:8px;">SnapTidy v3.13.1 — Built by <a href="https://github.com/chicogong">@chicogong</a></p>
+    <p style="margin-top:8px;">SnapTidy v3.14.0 — Built by <a href="https://github.com/chicogong">@chicogong</a></p>
 </footer>
 
 </body>

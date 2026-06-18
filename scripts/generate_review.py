@@ -382,6 +382,81 @@ body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI"
 /* Empty state */
 .empty { text-align: center; padding: 60px 20px; color: #86868b; }
 .empty-icon { font-size: 48px; margin-bottom: 12px; }
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {
+  body { background: #1c1c1e; color: #e5e5e7; }
+  .header { background: #2c2c2e; border-bottom-color: #38383a; }
+  .btn-secondary { background: #3a3a3c; color: #e5e5e7; }
+  .btn-secondary:hover { background: #48484a; }
+  .strategy-bar { background: #1c1c1e; }
+  .strategy-bar label { color: #98989d; }
+  .strategy-bar select { background: #2c2c2e; border-color: #48484a; color: #e5e5e7; }
+  .tabs { background: #2c2c2e; border-color: #38383a; }
+  .tab { color: #98989d; }
+  .tab:hover { background: #3a3a3c; color: #e5e5e7; }
+  .tab.active { background: #2c2c2e; }
+  .tab .tab-count { background: #3a3a3c; color: #98989d; }
+  .tab.active .tab-count { background: #0a3d6e; color: #4da2ff; }
+  .group { background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+  .group-btn { border-color: #38383a; background: #2c2c2e; color: #c7c7cc; }
+  .group-btn:hover { background: #3a3a3c; }
+  .group-btn.all-remove:hover { background: #3a1a1a; }
+  .group-btn.smart-pick:hover { background: #1a2a3a; }
+  .match-badge { background: #3a3a3c; color: #c7c7cc; }
+  .compare-table th { background: #1c1c1e; border-bottom-color: #38383a; }
+  .compare-table td { border-bottom-color: #2c2c2e; }
+  .compare-table tr.best td { background: #1a2e1e; }
+  .compare-table tr.worst td { background: #2e1a1a; }
+  .card { border-color: #38383a; }
+  .card.keep { border-color: #34c759; background: #1a2e1e; }
+  .card.remove { border-color: #ff3b30; background: #2e1a1a; }
+  .card-label .opt-keep { background: #2c2c2e; }
+  .card-label .opt-remove { background: #2c2c2e; }
+  .thumbnail { background: #3a3a3c; }
+  .no-thumb { background: #3a3a3c; color: #636366; }
+  .meta { color: #98989d; }
+  .meta strong { color: #e5e5e7; }
+  .fname { color: #e5e5e7; }
+  .album-tag { background: #3a3a3c; color: #c7c7cc; }
+  .album-tag.preferred { background: #0a3d6e; color: #4da2ff; }
+  .score-high { background: #1a2e1e; }
+  .score-mid { background: #2e2a1a; }
+  .score-low { background: #2e1a1a; }
+  .mini-card { border-color: #38383a; }
+  .mini-card.remove { background: #2e1a1a; }
+  .mini-card.keep { background: #1a2e1e; }
+  .footer-bar { background: #2c2c2e; border-top-color: #38383a; }
+  .progress-text { color: #98989d; }
+  .progress-text strong { color: #e5e5e7; }
+  .space-bar { background: #3a3a3c; }
+  .empty { color: #636366; }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header { padding: 10px 12px; }
+  .header-top { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .header-actions { width: 100%; }
+  .strategy-bar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .strategy-bar select { min-width: 140px; width: 100%; }
+  .content { padding: 12px; padding-bottom: 100px; }
+  .tabs { flex-direction: column; border-radius: 8px; }
+  .tab { padding: 10px 12px; border-bottom: 1px solid #e8e8ed; }
+  .tab.active { border-bottom-color: #007aff; }
+  .cards { flex-direction: column; }
+  .card { min-width: 100%; max-width: 100%; }
+  .compare-table { font-size: 11px; }
+  .footer-bar { flex-direction: column; gap: 8px; padding: 10px 12px; }
+  .space-bar { width: 100%; }
+  .standalone-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+}
+@media (max-width: 480px) {
+  .hero h1 { font-size: 14px; }
+  .btn { font-size: 11px; padding: 6px 10px; }
+  .group { padding: 12px; }
+  .compare-table th, .compare-table td { padding: 4px 6px; }
+}
 </style>
 </head>
 <body>
@@ -391,6 +466,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI"
     <h1>SnapTidy 照片审核</h1>
     <div class="header-actions">
       <span class="counter">标记删除: <strong id="remove-count">0</strong> 张</span>
+      <span class="counter" style="opacity:0.6">⌨️ ←→切换 K智能 R删除 A保留 1/2/3标签 E导出</span>
       <button class="btn btn-primary" onclick="exportCSV()">导出决策 CSV</button>
     </div>
   </div>
@@ -855,6 +931,95 @@ renderStandalone(DATA.standalone, 'tab-standalone');
 // Auto-apply smart rules on load
 applySmartRules();
 updateUI();
+
+// --- Keyboard Shortcuts ---
+let currentGroupIdx = 0;
+
+function getVisibleGroups() {
+  return [...document.querySelectorAll('.group')];
+}
+
+function scrollToGroup(idx) {
+  const groups = getVisibleGroups();
+  if (!groups.length) return;
+  idx = Math.max(0, Math.min(idx, groups.length - 1));
+  currentGroupIdx = idx;
+  groups.forEach((g, i) => {
+    if (i === idx) g.style.outline = '2px solid #007aff';
+    else g.style.outline = '';
+  });
+  groups[idx].scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+document.addEventListener('keydown', function(e) {
+  // Don't interfere with form inputs
+  const tag = e.target.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
+  const groups = getVisibleGroups();
+
+  switch(e.key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      e.preventDefault();
+      scrollToGroup(currentGroupIdx + 1);
+      break;
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      e.preventDefault();
+      scrollToGroup(currentGroupIdx - 1);
+      break;
+    case 'k':
+    case 'K': {
+      e.preventDefault();
+      const g = groups[currentGroupIdx];
+      if (g) {
+        const gid = g.querySelector('.group-id')?.textContent?.match(/Group (\d+)/)?.[1];
+        if (gid) setGroupSmart(gid);
+      }
+      break;
+    }
+    case 'r':
+    case 'R': {
+      e.preventDefault();
+      const g = groups[currentGroupIdx];
+      if (g) {
+        const gid = g.querySelector('.group-id')?.textContent?.match(/Group (\d+)/)?.[1];
+        if (gid) setGroupAll(gid, 'remove');
+      }
+      break;
+    }
+    case 'a':
+    case 'A': {
+      e.preventDefault();
+      const g = groups[currentGroupIdx];
+      if (g) {
+        const gid = g.querySelector('.group-id')?.textContent?.match(/Group (\d+)/)?.[1];
+        if (gid) setGroupAll(gid, 'keep');
+      }
+      break;
+    }
+    case '1':
+      e.preventDefault();
+      switchTab('duplicates');
+      scrollToGroup(0);
+      break;
+    case '2':
+      e.preventDefault();
+      switchTab('similar');
+      scrollToGroup(0);
+      break;
+    case '3':
+      e.preventDefault();
+      switchTab('standalone');
+      break;
+    case 'e':
+    case 'E':
+      e.preventDefault();
+      exportCSV();
+      break;
+  }
+});
 </script>
 </body>
 </html>"""

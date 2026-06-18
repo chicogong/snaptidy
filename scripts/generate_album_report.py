@@ -456,6 +456,39 @@ body {{
   .summary {{ grid-template-columns: repeat(2, 1fr); }}
   .album-grid {{ grid-template-columns: 1fr; }}
 }}
+
+/* Dark mode */
+@media (prefers-color-scheme: dark) {{
+  body {{ background: #1c1c1e; color: #e5e5e7; }}
+  .summary-card {{ background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
+  .library-info {{ background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
+  .library-info h2 {{ color: #e5e5e7; }}
+  .info-item {{ border-bottom-color: #2c2c2e; }}
+  .info-key {{ color: #98989d; }}
+  .album-card {{ background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
+  .album-card:hover {{ box-shadow: 0 4px 12px rgba(0,0,0,0.4); }}
+  .album-count {{ color: #98989d; }}
+  .album-count strong {{ color: #e5e5e7; }}
+  .album-status.new {{ background: #1a2e1e; }}
+  .album-status.existing {{ background: #0a3d6e; }}
+  .album-status.failed {{ background: #2e1a1a; }}
+  .thumb {{ background: #3a3a3c; }}
+  .no-thumb {{ background: #3a3a3c; color: #636366; }}
+  .dist-section {{ background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
+  .dist-section h2 {{ color: #e5e5e7; }}
+  .bar-label {{ color: #c7c7cc; }}
+  .bar-track {{ background: #3a3a3c; }}
+  .bar-count {{ color: #98989d; }}
+  .diff-section {{ background: #2c2c2e; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }}
+  .diff-section h2 {{ color: #e5e5e7; }}
+  .diff-table th {{ background: #1c1c1e; color: #98989d; border-bottom-color: #38383a; }}
+  .diff-table td {{ border-bottom-color: #2c2c2e; }}
+  .diff-table .album-col {{ color: #e5e5e7; }}
+  .diff-zero {{ color: #98989d; }}
+  .diff-badge.same {{ background: #3a3a3c; color: #98989d; }}
+  .diff-summary-row {{ background: #1c1c1e; }}
+  .footer {{ color: #636366; border-top-color: #38383a; }}
+}}
 </style>
 </head>
 <body>

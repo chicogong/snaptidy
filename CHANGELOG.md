@@ -47,6 +47,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Older changelogs collapsed** — v3.8-v3.11 What's New sections wrapped
   in `<details>` tags in both READMEs for readability.
 
+- **Dark mode for all HTML reports** — all 5 generated HTML pages
+  (review, preview, timeline, album report, health report) now support
+  `prefers-color-scheme: dark` with automatic theme switching.
+
+- **Responsive design** — review, preview, and health report pages now
+  include mobile breakpoints (@media 768px/480px) for tablet/phone use.
+
+- **Keyboard shortcuts in review page** — arrow keys navigate groups,
+  K applies smart strategy, R marks all remove, A marks all keep,
+  1/2/3 switches tabs, E exports CSV.
+
+- **UI language unified to Chinese** — preview page and timeline
+  controls were English; now consistent with other pages.
+
+- **Landing page updated** — version badge 30+ scripts → 42, added
+  7-dimension quality and bad extension detection to feature cards
+  and comparison table, JSON-LD feature list updated.
+
 ## [3.13.1] - 2026-06-17
 
 ### Fixed

@@ -331,6 +331,29 @@ body{{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
 .flag-lbl{{font-size:11px;color:#86868b}}
 table{{width:100%;border-collapse:collapse;font-size:13px}}
 td{{padding:8px 4px;border-bottom:1px solid #f0f0f2}}
+/* Dark mode */
+@media (prefers-color-scheme: dark){{
+body{{background:#1c1c1e;color:#e5e5e7}}
+.card{{background:#2c2c2e;box-shadow:0 1px 3px rgba(0,0,0,.3)}}
+.card h2{{color:#e5e5e7}}
+.bar-label{{color:#c7c7cc}}
+.bar-track{{background:#3a3a3c}}
+.bar-count{{color:#98989d}}
+.flag-card{{background:#2c2c2e}}
+.flag-lbl{{color:#98989d}}
+td{{border-bottom-color:#2c2c2e}}
+}}
+/* Responsive */
+@media (max-width: 768px){{
+body{{padding:12px}}
+.header{{padding:20px}}
+.header h1{{font-size:20px}}
+.header .meta{{gap:16px}}
+.header .mv{{font-size:16px}}
+.card{{padding:16px}}
+.flags{{grid-template-columns:repeat(2,1fr)}}
+.bar-label{{width:80px;font-size:12px}}
+}}
 </style></head>
 <body><div class="container">
 <div class="header">
