@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **SKILL.md drastically simplified** — reduced from 436 lines to 91 lines.
   Detailed feature tables moved to `references/features.md`. Description
-  shortened from 1500+ chars to 3 sentences. Version fixed to 3.13.1.
+  shortened from 1500+ chars to 3 sentences. Version updated to 3.14.0.
 
 - **README badges and step numbering** — version badge 3.13 → 3.13.1,
   website badge text snaptidy.app → realtime-ai.chat, duplicate Step 1b

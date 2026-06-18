@@ -4,7 +4,7 @@ This file provides universal AI coding rules for the SnapTidy project. Compatibl
 
 ## Project Overview
 
-SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst), generates safe move plans, provides HTML thumbnail previews, and supports undo. It never deletes files. Supports both file-system scanning and Photos.app library scanning. Interactive one-command workflow via `organize_photos.py`. Import from external drives/Android into Photos.app with automatic dedup via `import_to_photos.py`. Reverse geocoding (GPS→place names) with persistent cache. EXIF editing (strip GPS, set dates, write tags) with backup/restore safety.
+SnapTidy is a macOS photo/video organizer AI skill. It scans photo libraries, detects duplicates (SHA-256 exact + pHash perceptual + scaled + cross-format + burst + CNN + Apple ML vectors), assesses quality (7-dimension scoring: sharpness/exposure/contrast/resolution/format/filesize/EXIF), detects bad extensions (magic byte verification), generates safe move plans, provides HTML thumbnail previews, and supports undo. It never deletes files. Supports both file-system scanning and Photos.app library scanning. Interactive one-command workflow via `organize_photos.py`. Import from external drives/Android into Photos.app with automatic dedup via `import_to_photos.py`. Reverse geocoding (GPS→place names) with persistent cache. EXIF editing (strip GPS, set dates, write tags) with backup/restore safety.
 
 ## Code Conventions
 
@@ -96,6 +96,19 @@ Video Dedup:
 
 Smart Rename:
   rename_photos.py            — Rename by EXIF date/camera/location templates
+
+Quick Scan:
+  quick_scan.py               — Zero-install entry point (stdlib only, instant dedup)
+
+Compression:
+  compress_photos.py          — Smart JPEG compression by resolution tier
+
+Integrity:
+  detect_corrupted.py         — Find broken/truncated images + unplayable videos
+  fix_dates.py                — Fix missing EXIF dates (filename/neighbor/mtime)
+  verify_backup.py            — Verify backup completeness (quick or full SHA-256)
+  find_duplicate_folders.py  — Find similar folders by Jaccard similarity
+  library_stats.py            — Library health stats + what-if space analysis
 ```
 
 Each step is independent and produces a .db/.csv for the next step. This design allows:
@@ -181,9 +194,11 @@ SQLite `photos` table columns:
 - Location: gps_latitude, gps_longitude, place_city, place_region, place_country, place_country_code
 - Camera: camera_make, camera_model
 - Priority: folder_tag, scan_root, scanned_at
-- Quality: blur_score, brightness, contrast, quality_score (from assess_quality.py)
+- Quality: blur_score, brightness, contrast, quality_score, sharpness_score, exposure_score, contrast_score, resolution_score, format_score, filesize_score, exif_score (from assess_quality.py — 7-dimension)
+- Bad Extension: bad_extension (INTEGER 0/1), actual_format (TEXT), declared_format (TEXT) (from detect_bad_extensions.py)
 - iCloud: icloud_state (from scan_photos.py — "local", "icloud_placeholder", "downloaded", "download_failed")
 - v3.13: is_animated (INTEGER 0/1 — GIF/animated WebP/APNG), orientation (INTEGER 1-8 — EXIF Orientation)
+- v3.14: 7-dimension quality scores + bad extension detection columns (see above)
 - Photos.app exclusive: photos_favorite, photos_hidden, photos_screenshot, photos_duplicate_visibility, photos_cloud_state, photos_albums, photos_shared_albums, photos_icloud_locally_available
 
 Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible).
@@ -285,16 +300,19 @@ Modify photo metadata with safety guarantees:
 
 ## Quality Assessment (assess_quality.py)
 
-Compute blur/brightness/contrast/quality metrics for each image. Results stored in DB columns: `blur_score`, `brightness`, `contrast`, `quality_score`.
+Compute 7-dimension quality scores for each image. Results stored in DB columns: `blur_score`, `brightness`, `contrast`, `quality_score`, `sharpness_score`, `exposure_score`, `contrast_score`, `resolution_score`, `format_score`, `filesize_score`, `exif_score`.
 
-### Quality Score Formula (0-100)
+### Quality Score Formula (0-100, weighted composite)
 
-| Component | Weight | Method |
+| Dimension | Weight | Method |
 |-----------|--------|--------|
-| Sharpness | 40% | Laplacian variance (numpy or PIL fallback) |
-| Exposure | 25% | Mean brightness — penalize too dark (<60) or clipped (>180) |
-| Contrast | 20% | Pixel intensity standard deviation |
+| Sharpness | 25% | Laplacian variance (numpy or PIL fallback) |
+| Exposure | 15% | Mean brightness — penalize too dark (<60) or clipped (>180) |
+| Contrast | 10% | Pixel intensity standard deviation |
 | Resolution | 15% | Pixel count mapping (1MP→6, 8MP→10, 20MP→15) |
+| Format quality | 10% | RAW=100, HEIC=90, AVIF=85, JPEG=75, TIFF=70, WebP=60, PNG=50, BMP=25, GIF=35 |
+| File size efficiency | 10% | Bytes-per-pixel: 0.1-0.5=100 (well-compressed), <0.1=40 (over-compressed), >15=40 (uncompressed) |
+| EXIF completeness | 15% | Date(40) + GPS(25) + Camera(35) = max 100 |
 
 ### Integration
 
@@ -302,6 +320,7 @@ Compute blur/brightness/contrast/quality metrics for each image. Results stored 
 - `generate_review.py` shows quality badge (Q0-100) on review cards, adds "保留画质最好的" strategy
 - `organize_photos.py --assess-quality` runs quality assessment after scan
 - Use `--incremental` to only assess photos without existing scores
+- Use `--parallel N` for multi-threaded assessment
 
 ## Live Photo Protection
 
@@ -542,3 +561,51 @@ python3 fix_gps.py -i ./photo_index.db --window 30
 ### AVIF Support
 
 `AVIF_SUPPORT` flag in `photo_metadata.py` — tests native Pillow AVIF (≥11) then falls back to `pillow-avif-plugin`. New `AVIF_EXTS = {"avif"}` in `constants.py`. Scan warns about AVIF files if support is missing.
+
+## v3.14 — Bad Extension Detection & Multi-Dimensional Quality
+
+### Bad Extension Detection (detect_bad_extensions.py)
+
+Identifies files whose actual content format (determined by magic byte signatures) doesn't match their declared file extension. Common scenario: a HEIC file renamed to `.png` or a JPEG saved as `.heic`.
+
+**20+ format signatures**: JPEG (`\xff\xd8\xff`), PNG (`\x89PNG`), GIF (`GIF8`), BMP (`BM`), TIFF (`II*\x00` / `MM\x00*`), WebP/AVI (RIFF container), HEIC/HEIF (ftyp box with `heic`/`heix`/`mif1`/`msf1` brand), AVIF (`avif`/`avis` brand), MP4/MOV (ftyp with `mp4`/`qt`/`iso`/`M4V`/`f4v`), MKV (`\x1aE\xdf\xa3`), WMV/ASF (`\x30\x26\xb2\x75`), FLV (`FLV`), 3GP (`\x00\x00\x00\x18ftyp3gp`), MPEG (`\x00\x00\x01`), ICO (`\x00\x00\x01\x00`), PPM (`P6`/`P3`), RAW (CR2, ORF, RW2, RAF — TIFF-based with specific sub-types).
+
+```bash
+# Scan index for bad extensions
+python3 scripts/detect_bad_extensions.py --index ./photo_index.db
+
+# Parallel processing + report output
+python3 scripts/detect_bad_extensions.py --index ./photo_index.db --parallel 4 --report bad_ext.csv
+
+# Incremental (skip already-checked files)
+python3 scripts/detect_bad_extensions.py --index ./photo_index.db --incremental
+```
+
+### 7-Dimension Quality Scoring (assess_quality.py enhanced)
+
+Upgraded from 3 dimensions (blur/brightness/contrast) to 7 dimensions. Each dimension produces a 0-100 score stored as a separate DB column. Composite `quality_score` uses weighted formula.
+
+| Dimension | DB Column | Weight | Method |
+|-----------|-----------|--------|--------|
+| Sharpness | `sharpness_score` | 25% | Laplacian variance |
+| Exposure | `exposure_score` | 15% | Mean brightness deviation |
+| Contrast | `contrast_score` | 10% | Pixel intensity std dev |
+| Resolution | `resolution_score` | 15% | Pixel count mapping |
+| Format quality | `format_score` | 10% | Format hierarchy: RAW > HEIC > AVIF > JPEG |
+| File size efficiency | `filesize_score` | 10% | Bytes-per-pixel analysis |
+| EXIF completeness | `exif_score` | 15% | Date + GPS + Camera presence |
+
+### New DB Columns
+
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `bad_extension` | INTEGER | 0 | 1 if actual format ≠ declared extension |
+| `actual_format` | TEXT | NULL | Format detected from magic bytes |
+| `declared_format` | TEXT | NULL | Format from file extension |
+| `sharpness_score` | INTEGER | 0 | 0-100, Laplacian variance |
+| `exposure_score` | INTEGER | 0 | 0-100, brightness deviation |
+| `contrast_score` | INTEGER | 0 | 0-100, intensity std dev |
+| `resolution_score` | INTEGER | 0 | 0-100, pixel count |
+| `format_score` | INTEGER | 0 | 0-100, format hierarchy |
+| `filesize_score` | INTEGER | 0 | 0-100, bytes-per-pixel |
+| `exif_score` | INTEGER | 0 | 0-100, metadata completeness |
