@@ -11,6 +11,10 @@
 
 > AI-powered photo & video organizer for macOS. Deduplicate photos, find similar images via perceptual hashing (pHash) and Apple ML vectors, fix EXIF metadata, and restructure your library — safely, through natural-language conversation. Zero-risk, read-only scan with human-approved actions. Open source, MIT licensed.
 
+<p align="center">
+  <img src="https://realtime-ai.chat/snaptidy/screenshots/landing-page.png" alt="SnapTidy Landing Page" width="800">
+</p>
+
 ## How SnapTidy Compares
 
 | Feature | SnapTidy | Commercial Apps | Basic CLI Tools |
@@ -346,6 +350,11 @@ python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
 # Step 7: Undo if needed
 python3 scripts/apply_move_plan.py --plan ./move_plan.csv --undo
 ```
+
+<p align="center">
+  <img src="https://realtime-ai.chat/snaptidy/screenshots/preview-duplicates.png" alt="SnapTidy Duplicate Preview" width="700">
+  <em>HTML preview with thumbnails — review before acting</em>
+</p>
 
 ### Import to Photos.app
 

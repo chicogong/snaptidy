@@ -11,6 +11,10 @@
 
 > macOS 照片视频整理去重工具。通过感知哈希 (pHash)、Apple ML 特征向量和 SHA-256 检测重复照片，支持跨格式去重（HEIC↔JPEG）、EXIF 修复、GPS 逆地理编码。AI 对话驱动，只读扫描，人工确认后操作，零风险。开源免费 (MIT)。
 
+<p align="center">
+  <img src="https://realtime-ai.chat/snaptidy/screenshots/landing-page.png" alt="SnapTidy 着陆页" width="800">
+</p>
+
 ## SnapTidy 功能对比
 
 | 功能 | SnapTidy | 商业软件 | 基础 CLI 工具 |
@@ -333,6 +337,11 @@ python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash
 # 第 7 步：如需撤销
 python3 scripts/apply_move_plan.py --plan ./move_plan.csv --undo
 ```
+
+<p align="center">
+  <img src="https://realtime-ai.chat/snaptidy/screenshots/preview-duplicates.png" alt="SnapTidy 去重预览" width="700">
+  <em>HTML 缩略图预览 — 操作前可先审查</em>
+</p>
 
 ### 导入 Photos.app
 
