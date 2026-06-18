@@ -23,6 +23,9 @@ from datetime import datetime
 try:
     from PIL import Image
     PILLOW_AVAILABLE = True
+    # Decompression bomb protection — reject images that exceed ~60 MP
+    # (prevents OOM from malicious crafted files)
+    Image.MAX_IMAGE_PIXELS = 60_000_000  # 60 megapixels
 except ImportError:
     PILLOW_AVAILABLE = False
 
@@ -46,6 +49,19 @@ try:
 except ImportError:
     HEIC_SUPPORT = False
 
+# Optional AVIF decode support (Pillow >= 11 has native AVIF; older needs pillow-avif-plugin)
+try:
+    # Test if Pillow can already open AVIF natively
+    import io
+    _avif_test = Image.open(io.BytesIO(b"\x00\x00\x00\x20ftypavif"))
+    AVIF_SUPPORT = True
+except Exception:
+    try:
+        import pillow_avif  # noqa: F401
+        AVIF_SUPPORT = True
+    except ImportError:
+        AVIF_SUPPORT = False
+
 
 def missing_dependencies() -> list:
     """Return a list of optional deps that are NOT installed (for warnings)."""
@@ -58,6 +74,8 @@ def missing_dependencies() -> list:
         missing.append("imagehash")
     if not HEIC_SUPPORT:
         missing.append("pillow-heif")
+    if not AVIF_SUPPORT:
+        missing.append("pillow-avif-plugin")
     return missing
 
 
@@ -237,5 +255,119 @@ def has_exif_data(path: str) -> bool:
         zeroth = exif_dict.get("0th", {})
         has_camera = bool(zeroth.get(piexif.ImageIFD.Make)) or bool(zeroth.get(piexif.ImageIFD.Model))
         return has_exif_section or has_gps or has_camera
+    except Exception:
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Animated image detection
+# ---------------------------------------------------------------------------
+def is_animated_image(path: str) -> bool:
+    """Check if an image is animated (GIF, animated WebP, APNG).
+
+    Returns True for multi-frame images, False for static images.
+    """
+    if not PILLOW_AVAILABLE:
+        return False
+    try:
+        with Image.open(path) as img:
+            # GIF: check n_frames
+            if getattr(img, "n_frames", 1) > 1:
+                return True
+            # WebP: check is_animated attribute (Pillow >= 6.1)
+            if hasattr(img, "is_animated") and img.is_animated:
+                return True
+            # APNG: check for multiple frames in PNG
+            if img.format == "PNG":
+                # APNG stores frames in acTL chunk; Pillow detects via n_frames
+                if getattr(img, "n_frames", 1) > 1:
+                    return True
+    except Exception:
+        pass
+    return False
+
+
+# ---------------------------------------------------------------------------
+# EXIF Orientation helpers
+# ---------------------------------------------------------------------------
+def get_exif_orientation(path: str) -> int:
+    """Extract EXIF Orientation value (1-8).
+
+    Values:
+      1 = Normal (no rotation)
+      2 = Mirrored horizontal
+      3 = Rotated 180°
+      4 = Mirrored vertical
+      5 = Mirrored horizontal + rotated 270°
+      6 = Rotated 90° (most common from iPhone portrait)
+      7 = Mirrored horizontal + rotated 90°
+      8 = Rotated 270°
+
+    Returns orientation int, or 1 if not found / not applicable.
+    """
+    if not PIEXIF_AVAILABLE:
+        return 1
+    try:
+        exif_dict = piexif.load(path)
+        orientation = exif_dict.get("0th", {}).get(piexif.ImageIFD.Orientation, 1)
+        return int(orientation) if orientation else 1
+    except Exception:
+        return 1
+
+
+# EXIF orientation → PIL transform mapping
+_ORIENT_TRANSFORMATION = {
+    1: None,                       # Normal
+    2: Image.FLIP_LEFT_RIGHT,      # Mirrored horizontal
+    3: Image.ROTATE_180,           # Rotated 180°
+    4: Image.FLIP_TOP_BOTTOM,      # Mirrored vertical
+    5: Image.TRANSPOSE,            # Mirrored horizontal + rotated 270°
+    6: Image.ROTATE_270,           # Rotated 90° (pillow uses CCW)
+    7: Image.TRANSVERSE,           # Mirrored horizontal + rotated 90°
+    8: Image.ROTATE_90,            # Rotated 270° (pillow uses CCW)
+}
+
+
+def apply_exif_orientation(path: str, output_path: str = None, quality: int = 95) -> bool:
+    """Apply EXIF orientation to image pixels and reset orientation to 1.
+
+    If output_path is None, overwrites the original file.
+    Returns True on success, False on failure.
+    """
+    if not PILLOW_AVAILABLE or not PIEXIF_AVAILABLE:
+        return False
+    try:
+        orientation = get_exif_orientation(path)
+        if orientation <= 1:
+            return True  # Already correct, no rotation needed
+
+        transform = _ORIENT_TRANSFORMATION.get(orientation)
+        if transform is None:
+            return True
+
+        with Image.open(path) as img:
+            rotated = img.transpose(transform) if transform else img
+
+            # Preserve EXIF but set orientation to 1 (normal)
+            if "exif" in img.info:
+                exif_dict = piexif.load(img.info["exif"])
+                exif_dict["0th"][piexif.ImageIFD.Orientation] = 1
+                exif_bytes = piexif.dump(exif_dict)
+            else:
+                exif_bytes = None
+
+            save_path = output_path or path
+            fmt = img.format or "JPEG"
+
+            save_kwargs = {"quality": quality}
+            if exif_bytes:
+                save_kwargs["exif"] = exif_bytes
+
+            if fmt == "JPEG":
+                rotated.save(save_path, format="JPEG", **save_kwargs)
+            else:
+                rotated.save(save_path, format=fmt, **save_kwargs)
+
+        return True
     except Exception:
         return False

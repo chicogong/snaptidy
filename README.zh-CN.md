@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.12-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.13-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
 
 ## 目录
 
 - [为什么选择 SnapTidy？](#为什么选择-snaptidy)
-- [新功能](#v312-新功能)
+- [新功能](#v313-新功能)
 - [核心特性](#核心特性)
 - [安装](#安装)
 - [工作原理](#工作原理)
@@ -36,6 +36,17 @@
 **iPhone 用户**：整理照片不需要 iCloud 同步到电脑。通过 USB 连接 iPhone，SnapTidy 可以直接扫描 Photos.app 图库，或者先用 Finder 将照片同步到本地文件夹。使用 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 等工具还可以直接通过 USB 访问 iPhone 的 DCIM 目录，无需 iCloud。
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
+
+## v3.13 新功能
+
+| 功能 | 说明 |
+|------|------|
+| 🔄 **批量 EXIF 方向纠正** | `rotate_photos.py` — 检测 EXIF Orientation 标记，物理旋转像素到正确方向，重置 Orientation 为 1；支持 `--dry-run`、`--orientation N` 过滤 |
+| 🖼️ **格式转换** | `convert_format.py` — JPEG/HEIC/PNG → WEBP/AVIF，保留 EXIF 元数据，30-50% 空间节省；`--dry-run` 预估节省量 |
+| 📍 **GPS 邻近推断** | `fix_gps.py` — 从时间相邻的照片推断缺失 GPS（±10 分钟窗口），可选写入 EXIF |
+| 🎬 **动图检测** | `is_animated_image()` — 检测 GIF/animated WebP/APNG，新增 `is_animated` 数据库列 |
+| 🛡️ **解压缩炸弹防护** | `Image.MAX_IMAGE_PIXELS` 设为 60MP，防止恶意超大图 OOM |
+| 📱 **AVIF 格式支持** | 完整 AVIF 解码支持（Pillow ≥11 原生或 `pillow-avif-plugin`） |
 
 ## v3.12 新功能
 

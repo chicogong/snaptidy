@@ -1,9 +1,9 @@
 ---
 name: snaptidy
-version: 3.12.0
+version: 3.13.0
 description: |
-  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags), interactive review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album/best quality), quality assessment (blur/brightness/contrast → 0-100 score integrated with dedup), Live Photo detection (keep pairs together during dedup), orphan RAW cleanup, interactive timeline viewer, Photos.app vs file-system library compare, Google Takeout import with metadata merge, GPX geotagging, event clustering by time+location, video dedup via frame sampling+pHash, smart rename by EXIF date/camera/location templates, corrupted image/video detection (layered Pillow verify+load, ffmpeg probe), photo date correction from filename/neighbors/mtime, backup verification (quick or SHA-256 full), duplicate folder detection (Jaccard similarity), space what-if analysis, iCloud optimization handling (detect/skip/download placeholder thumbnails, disk space safety check, batch download with progress).
-  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit", "照片审核", "photo review", "review duplicates", "审核重复", "照片质量", "photo quality", "quality assessment", "Live Photo", "orphan RAW", "timeline", "照片时间线", "library compare", "Google Takeout", "GPX geotag", "event clustering", "照片事件", "video dedup", "视频去重", "smart rename", "照片重命名", "corrupted photo", "损坏图片", "fix date", "修正日期", "backup verify", "备份验证", "duplicate folder", "重复文件夹", "what if", "空间分析", "iCloud", "iCloud placeholder", "iCloud download", "brctl download", "optimize storage", "iCloud优化", "check icloud", "icloud check", "iCloud空间不足"
+  AI-powered photo & video organizer for macOS. Detect duplicates using SHA-256 exact + pHash perceptual + scaled + cross-format (HEIC↔JPEG) + burst + Apple Quality Vector + CNN. Scan file folders or Photos.app library. Import from external drives/Android into Photos.app with automatic dedup. Organize by date/category/location, create albums in Photos.app, library health & insights report, HTML before/after report, interactive workflow, HTML thumbnail preview, undo support, iCloud/Android/external drive detection, shared album reading, album-aware filtering, smart priority rules with album/folder preference, Fast/Safe path confirmation, SQLite storage for 100k+ photos, reverse geocoding (GPS→place names), EXIF editing (strip GPS/set dates/write tags), interactive review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album/best quality), quality assessment (blur/brightness/contrast → 0-100 score integrated with dedup), Live Photo detection (keep pairs together during dedup), orphan RAW cleanup, interactive timeline viewer, Photos.app vs file-system library compare, Google Takeout import with metadata merge, GPX geotagging, event clustering by time+location, video dedup via frame sampling+pHash, smart rename by EXIF date/camera/location templates, corrupted image/video detection (layered Pillow verify+load, ffmpeg probe), photo date correction from filename/neighbors/mtime, backup verification (quick or SHA-256 full), duplicate folder detection (Jaccard similarity), space what-if analysis, iCloud optimization handling (detect/skip/download placeholder thumbnails, disk space safety check, batch download with progress), batch EXIF orientation rotation fix, format conversion (JPEG/HEIC→WEBP/AVIF with 30-50% savings), GPS neighbor inference (infer missing GPS from temporally adjacent photos), animated image detection (GIF/animated WebP/APNG), decompression bomb protection (60MP limit), AVIF format support.
+  Trigger: "organize my photos", "find duplicate photos", "dedup my library", "tidy photo folder", "import photos", "import from Android", "整理照片", "去重", "整理相册", "HEIC去重", "写真整理", "사진 정리", "按日期整理照片", "organize by date", "导入照片", "清理相册", "album dedup", "创建相册", "归类相册", "相册分类", "按类别整理", "按格式分类", "album organization", "organize albums", "photos album", "相册报告", "整理报告", "照片库健康", "library health", "library stats", "照片统计", "library insights", "照片库分析", "按地点整理", "organize by location", "逆地理编码", "reverse geocode", "移除GPS", "strip GPS", "EXIF编辑", "EXIF edit", "照片审核", "photo review", "review duplicates", "审核重复", "照片质量", "photo quality", "quality assessment", "Live Photo", "orphan RAW", "timeline", "照片时间线", "library compare", "Google Takeout", "GPX geotag", "event clustering", "照片事件", "video dedup", "视频去重", "smart rename", "照片重命名", "corrupted photo", "损坏图片", "fix date", "修正日期", "backup verify", "备份验证", "duplicate folder", "重复文件夹", "what if", "空间分析", "iCloud", "iCloud placeholder", "iCloud download", "brctl download", "optimize storage", "iCloud优化", "check icloud", "icloud check", "iCloud空间不足", "rotate photo", "EXIF orientation", "照片旋转", "方向纠正", "照片方向", "convert format", "格式转换", "WEBP", "AVIF", "JPEG转WEBP", "save space", "节省空间", "fix gps", "GPS推断", "GPS缺失", "missing GPS", "animated", "动图检测", "GIF去重"
 author: chicogong
 license: MIT
 homepage: https://github.com/chicogong/snaptidy
@@ -28,7 +28,7 @@ metadata:
 
 Organize/tidy photo folders, find/remove duplicates, scan Photos.app library, detect scaled/cross-format/burst duplicates, generate move plans, preview with HTML thumbnails, undo moves, check iCloud status, scan Android/external drives, import into Photos.app with dedup, read shared albums, filter by album, **create albums in Photos.app by date/category/format**, **HTML before/after diff report**, **library health & insights (read-only stats)**, **reverse geocoding (GPS→place names)**, **EXIF editing (strip GPS/set dates/write tags)**, **organize by location (Country/Region/City/)**, **interactive review page with smart strategy rules**, **quality assessment (blur/brightness/contrast → dedup integration)**, **Live Photo detection (keep pairs together)**, **orphan RAW cleanup**, **interactive timeline viewer**, **Photos.app vs file-system compare**, **Google Takeout import**, **GPX geotagging**, **event clustering**, **video dedup**, **smart rename**, **corrupted image/video detection**, **photo date correction from filename/neighbors/mtime**, **backup verification**, **duplicate folder detection**, **space what-if analysis**, **iCloud optimization handling (detect/skip/download placeholder thumbnails, disk space safety check, batch download with progress)**.
 
-**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑 · 照片质量 · Live Photo · 时间线 · 视频去重 · 照片重命名 · 照片事件 · 损坏图片 · 修正日期 · 备份验证 · 重复文件夹 · 空间分析 · iCloud优化 · check icloud
+**Triggers:** 整理照片 · 去重 · 整理相册 · 重複写真を削除 · 사진 정리 · Organiser mes photos · Fotos organisieren · Organizar fotos · 清理相册 · 照片库健康 · library stats · 按地点整理 · 逆地理编码 · 移除GPS · EXIF编辑 · 照片质量 · Live Photo · 时间线 · 视频去重 · 照片重命名 · 照片事件 · 损坏图片 · 修正日期 · 备份验证 · 重复文件夹 · 空间分析 · iCloud优化 · check icloud · 照片旋转 · 方向纠正 · 格式转换 · JPEG转WEBP · 节省空间 · GPS推断 · 动图检测
 
 ## Safety Rules — MANDATORY
 
@@ -143,6 +143,32 @@ python3 scripts/generate_move_plan.py --duplicates dup.csv --index index.db \
 | `compress_photos.py` | Smart JPEG compression by resolution tier; PNG→JPEG conversion |
 | `timeline_gaps.py` | Detect abnormal date gaps indicating missing photos |
 | Unified `constants.py` | All format definitions consolidated; AVIF, WebM, MTS, ORF, RW2 added |
+
+## v3.13 New Features — Rotation, Conversion & GPS
+
+| Script | Trigger | What it does |
+|--------|---------|-------------|
+| `rotate_photos.py` | "rotate photo", "照片旋转", "方向纠正" | Batch-rotate photos to correct EXIF Orientation; applies pixel rotation, resets Orientation to 1, preserves EXIF; `--dry-run`, `--orientation N` filter, directory scan |
+| `convert_format.py` | "convert format", "格式转换", "JPEG转WEBP" | JPEG/HEIC/PNG → WEBP/AVIF; preserves EXIF GPS/date/camera; 30-50% savings; `--quality N`, `--lossless`, `--keep-originals`, `--dry-run` with savings estimate |
+| `fix_gps.py` | "fix gps", "GPS推断", "GPS缺失" | Infer missing GPS from temporally adjacent photos (±10 min); uses closest or averages; `--write-exif`, `--dry-run` |
+| `is_animated_image()` | (internal) | Detect GIF/animated WebP/APNG; new `is_animated` DB column; scan reports animated count |
+| `get_exif_orientation()` | (internal) | Extract EXIF Orientation (1-8); new `orientation` DB column; scan reports rotated count |
+| `Image.MAX_IMAGE_PIXELS` | (internal) | Decompression bomb protection — 60MP limit, prevents OOM from malicious images |
+| `AVIF_SUPPORT` | (internal) | AVIF decode support (Pillow ≥11 native or `pillow-avif-plugin`); new `AVIF_EXTS` in constants |
+
+```bash
+# Fix EXIF rotation (dry-run first)
+python3 scripts/rotate_photos.py -i ./photo_index.db --dry-run
+python3 scripts/rotate_photos.py -i ./photo_index.db
+
+# Convert to WEBP (save 30-50% space)
+python3 scripts/convert_format.py -i ./photo_index.db --to webp --dry-run
+python3 scripts/convert_format.py -i ./photo_index.db --to webp --quality 85
+
+# Infer missing GPS from neighbors
+python3 scripts/fix_gps.py -i ./photo_index.db --dry-run
+python3 scripts/fix_gps.py -i ./photo_index.db --write-exif
+```
 
 ## v3.12 New Features — iCloud Optimization Handling
 
@@ -382,9 +408,12 @@ snaptidy_output/          # Default output (--output-dir)
 
 Common logic lives in three importable modules (single source of truth — no duplication):
 
-- `scripts/photo_metadata.py` — SHA-256, pHash, EXIF (datetime/GPS/camera/subsec), image size, aspect ratio + optional-dependency flags
+- `scripts/photo_metadata.py` — SHA-256, pHash, EXIF (datetime/GPS/camera/subsec/orientation), image size, aspect ratio, animated image detection, decompression bomb protection + optional-dependency flags (Pillow/piexif/imagehash/pillow-heif/pillow-avif)
 - `scripts/constants.py` — extension sets, format-family mapping, Core Data epoch, month names, album-name maps, `format_size`
 - `scripts/applescript_utils.py` — AppleScript string escaping + `osascript` invocation
+- `scripts/rotate_photos.py` — Batch EXIF orientation fix (rotate pixels, reset Orientation to 1)
+- `scripts/convert_format.py` — JPEG/HEIC/PNG → WEBP/AVIF conversion (preserve EXIF, save 30-50%)
+- `scripts/fix_gps.py` — Infer missing GPS from temporally adjacent photos
 - `scripts/icloud_utils.py` — iCloud detection (`.icloud` companion, xattr, size heuristic), `brctl download` with polling, disk space checking, batch download
 
 ## CLI Conventions

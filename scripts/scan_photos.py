@@ -41,12 +41,12 @@ from datetime import datetime
 
 # Shared metadata helpers + optional-dependency flags (single source of truth)
 from photo_metadata import (
-    PILLOW_AVAILABLE, PIEXIF_AVAILABLE, IMAGEHASH_AVAILABLE, HEIC_SUPPORT,
+    PILLOW_AVAILABLE, PIEXIF_AVAILABLE, IMAGEHASH_AVAILABLE, HEIC_SUPPORT, AVIF_SUPPORT,
     compute_sha256, get_exif_datetime, get_gps_coords, get_camera_info,
     has_exif_data, compute_phash, get_image_size, get_subsec_time,
-    compute_aspect_ratio,
+    compute_aspect_ratio, is_animated_image, get_exif_orientation,
 )
-from constants import IMAGE_EXTS, VIDEO_EXTS, RAW_EXTS, HEIC_EXTS, get_format_family
+from constants import IMAGE_EXTS, VIDEO_EXTS, RAW_EXTS, HEIC_EXTS, AVIF_EXTS, get_format_family
 from reverse_geocode import reverse_geocode, init_cache as geo_init_cache, flush_cache as geo_flush_cache
 from icloud_utils import check_icloud_status, download_icloud_file
 
@@ -221,6 +221,8 @@ def _compute_entry(full_path, name, ext, stat, input_dir, scan_time,
     place_region = ""
     place_country = ""
     place_country_code = ""
+    is_animated = 0
+    orientation = 1
 
     if ext in IMAGE_EXTS:
         media_type = "image"
@@ -232,6 +234,8 @@ def _compute_entry(full_path, name, ext, stat, input_dir, scan_time,
         gps_lat, gps_lon = get_gps_coords(full_path)
         camera_make, camera_model = get_camera_info(full_path)
         has_exif_val = 1 if has_exif_data(full_path) else 0
+        is_animated = 1 if is_animated_image(full_path) else 0
+        orientation = get_exif_orientation(full_path)
         # Reverse geocode GPS → place name
         if geocode and gps_lat and gps_lon:
             place = reverse_geocode(gps_lat, gps_lon)
@@ -273,6 +277,8 @@ def _compute_entry(full_path, name, ext, stat, input_dir, scan_time,
         "place_country": place_country,
         "place_country_code": place_country_code,
         "icloud_state": icloud_state,
+        "is_animated": is_animated,
+        "orientation": orientation,
     }
 
 
@@ -315,6 +321,8 @@ def init_db(db_path: str) -> sqlite3.Connection:
         ("place_country", "TEXT DEFAULT ''"),
         ("place_country_code", "TEXT DEFAULT ''"),
         ("icloud_state", "TEXT DEFAULT 'local'"),
+        ("is_animated", "INTEGER DEFAULT 0"),
+        ("orientation", "INTEGER DEFAULT 1"),
     ]
     for col_name, col_type in new_columns:
         try:
@@ -372,6 +380,9 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
     scan_time = datetime.now().isoformat()
     categories = {}
     heic_count = 0
+    avif_count = 0
+    animated_count = 0
+    rotated_count = 0
     icloud_warn_count = 0
     icloud_skip_count = 0
     icloud_download_count = 0
@@ -466,6 +477,12 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                 categories[cat] = categories.get(cat, 0) + 1
                 if entry["extension"] in HEIC_EXTS:
                     heic_count += 1
+                if entry["extension"] in AVIF_EXTS:
+                    avif_count += 1
+                if entry.get("is_animated", 0):
+                    animated_count += 1
+                if entry.get("orientation", 1) > 1:
+                    rotated_count += 1
                 ic_state = entry.get("icloud_state", "local")
                 if ic_state == "icloud_placeholder":
                     icloud_warn_count += 1
@@ -505,6 +522,12 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
                         categories[cat] = categories.get(cat, 0) + 1
                         if entry["extension"] in HEIC_EXTS:
                             heic_count += 1
+                        if entry["extension"] in AVIF_EXTS:
+                            avif_count += 1
+                        if entry.get("is_animated", 0):
+                            animated_count += 1
+                        if entry.get("orientation", 1) > 1:
+                            rotated_count += 1
                         ic_state = entry.get("icloud_state", "local")
                         if ic_state == "icloud_placeholder":
                             icloud_warn_count += 1
@@ -530,6 +553,13 @@ def scan_directory(input_dir: str, output_path: str, use_db: bool = True,
         if not HEIC_SUPPORT and heic_count > 0:
             print(f"  ⚠️  {heic_count} HEIC/HEIF files found — install pillow-heif for full support:")
             print(f"      pip install pillow-heif")
+        if not AVIF_SUPPORT and avif_count > 0:
+            print(f"  ⚠️  {avif_count} AVIF files found — install pillow-avif-plugin for full support:")
+            print(f"      pip install pillow-avif-plugin")
+        if animated_count > 0:
+            print(f"  🎬 {animated_count} animated images detected (GIF/animated WebP/APNG)")
+        if rotated_count > 0:
+            print(f"  🔄 {rotated_count} images with EXIF orientation tag (use rotate_photos.py to fix)")
         # iCloud statistics
         if icloud_warn_count > 0 or icloud_skip_count > 0 or icloud_download_count > 0:
             print(f"\n  ☁️  iCloud status:")

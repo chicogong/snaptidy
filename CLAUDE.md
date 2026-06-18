@@ -195,6 +195,19 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-location
 | `--max-download N` | Download at most N iCloud files (check_icloud.py) |
 | `--min-free GB` | Minimum free disk space in GB for iCloud download (default: 5) |
 
+### Rotation, Conversion & GPS Flags (v3.13)
+
+| Flag | Description |
+|------|-------------|
+| `--to webp\|avif` | Target format for conversion (convert_format.py) |
+| `--quality N` | Output quality 1-100 for format conversion (default: 85) |
+| `--lossless` | Lossless format conversion |
+| `--keep-originals` | Keep original files after conversion |
+| `--min-size KB` | Skip files smaller than N KB for conversion |
+| `--orientation N` | Only fix images with this EXIF orientation (rotate_photos.py) |
+| `--window N` | Time window in minutes for GPS inference (fix_gps.py, default: 10) |
+| `--write-exif` | Write inferred GPS to EXIF files (fix_gps.py) |
+
 ### EXIF Editing Flags (edit_exif.py)
 
 | Flag | Description |
@@ -229,6 +242,8 @@ python3 scripts/organize_photos.py --source ~/Pictures/Export --mode by-location
 Install with: `pip install -r requirements.txt` (Pillow, piexif, imagehash, pillow-heif)
 Optional: `pip install pyobjc-framework-Photos` (for Photos.app deletion)
 Optional: `pip install photoscript` (for Photos.app import — recommended)
+Optional: `pip install pillow-avif-plugin` (for AVIF format support)
+Optional: `pip install pillow-heif` (for HEIC/HEIF decode support)
 
 ## Import from External Sources
 
@@ -290,3 +305,22 @@ python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths pho
 ```
 
 Safety: `.bak` backup created before edit, restored on error, cleaned on success.
+
+## Photo Rotation, Format Conversion & GPS Inference (v3.13)
+
+```bash
+# 25. Fix EXIF rotation (dry-run first, then apply)
+python3 scripts/rotate_photos.py -i ./photo_index.db --dry-run
+python3 scripts/rotate_photos.py -i ./photo_index.db
+
+# 26. Convert JPEG/HEIC to WEBP (save 30-50% space)
+python3 scripts/convert_format.py -i ./photo_index.db --to webp --dry-run
+python3 scripts/convert_format.py -i ./photo_index.db --to webp --quality 85
+
+# Convert only large files to AVIF, keep originals
+python3 scripts/convert_format.py -s /path/to/photos --to avif --min-size 500 --keep-originals
+
+# 27. Infer missing GPS from temporally adjacent photos
+python3 scripts/fix_gps.py -i ./photo_index.db --dry-run
+python3 scripts/fix_gps.py -i ./photo_index.db --write-exif
+```

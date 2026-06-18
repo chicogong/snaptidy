@@ -6,14 +6,14 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.12-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.13-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 
 > AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
 
 ## Table of Contents
 
 - [Why SnapTidy?](#why-snaptidy)
-- [What's New](#whats-new-in-v312)
+- [What's New](#whats-new-in-v313)
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
@@ -36,6 +36,17 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 **iPhone users**: You don't need iCloud sync to organize your photos. Connect your iPhone via USB and SnapTidy can scan the Photos.app library directly, or use Finder to sync photos to a local folder first. Tools like [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) also allow direct USB access to your iPhone's DCIM without iCloud.
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
+
+## What's New in v3.13
+
+| Feature | Description |
+|---------|-------------|
+| 🔄 **Batch EXIF Rotation Fix** | `rotate_photos.py` — detect images with incorrect EXIF Orientation, physically rotate pixels to correct direction, reset Orientation to 1; `--dry-run`, `--orientation N` filter, directory scan mode |
+| 🖼️ **Format Conversion** | `convert_format.py` — JPEG/HEIC/PNG → WEBP/AVIF; preserves EXIF GPS/date/camera metadata; 30-50% space savings; `--dry-run` with savings estimate, `--quality N`, `--lossless`, `--keep-originals` |
+| 📍 **GPS Neighbor Inference** | `fix_gps.py` — infer missing GPS from temporally adjacent photos (±10 min window); uses closest reference or averages multiple; `--write-exif`, `--dry-run` |
+| 🎬 **Animated Image Detection** | `is_animated_image()` — detects GIF/animated WebP/APNG; new `is_animated` DB column; scan reports animated count |
+| 🛡️ **Decompression Bomb Protection** | `Image.MAX_IMAGE_PIXELS` set to 60MP — prevents OOM from malicious oversized images |
+| 📱 **AVIF Format Support** | Full AVIF decode support (native Pillow ≥11 or `pillow-avif-plugin`); new `AVIF_EXTS` in constants; scan warns about unconverted AVIF files |
 
 ## What's New in v3.12
 
@@ -158,6 +169,11 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - 🎬 **Video Dedup** — Frame sampling + pHash for video duplicates
 - ✏️ **Smart Rename** — Rename by EXIF metadata with configurable templates
 - 💥 **Corrupted Detection** — Find broken/truncated images and unplayable videos
+- 🔄 **EXIF Rotation Fix** — Batch-rotate photos to correct orientation based on EXIF tag
+- 🖼️ **Format Conversion** — Convert JPEG/HEIC to WEBP/AVIF with 30-50% space savings
+- 📍 **GPS Inference** — Infer missing GPS from temporally adjacent photos
+- 🎬 **Animated Detection** — Detect GIF/animated WebP/APNG for smarter dedup
+- 🛡️ **Bomb Protection** — Decompression bomb guard (60MP limit)
 - ☁️ **iCloud Optimization Handling** — Detect, skip, or download iCloud placeholder thumbnails before scanning; standalone `check_icloud.py` for batch pre-download with progress
 - 📅 **Date Correction** — Fix missing EXIF dates from filename patterns, neighbors, or file mtime
 - 🔄 **Backup Verification** — Verify backup completeness (quick or SHA-256 full mode)
@@ -325,6 +341,25 @@ python3 scripts/import_to_photos.py --source /Volumes/External/Photos \
 
 # List shared albums (read-only)
 python3 scripts/import_to_photos.py --show-shared-albums
+```
+
+### Photo Rotation, Conversion & GPS Inference
+
+```bash
+# Fix EXIF orientation (dry-run first, then apply)
+python3 scripts/rotate_photos.py --index ./photo_index.db --dry-run
+python3 scripts/rotate_photos.py --index ./photo_index.db
+
+# Convert JPEG/HEIC to WEBP (30-50% space savings)
+python3 scripts/convert_format.py --index ./photo_index.db --to webp --dry-run
+python3 scripts/convert_format.py --index ./photo_index.db --to webp --quality 85
+
+# Convert only large files to AVIF
+python3 scripts/convert_format.py --source /path/to/photos --to avif --min-size 500 --dry-run
+
+# Infer missing GPS from neighboring photos
+python3 scripts/fix_gps.py --index ./photo_index.db --dry-run
+python3 scripts/fix_gps.py --index ./photo_index.db --write-exif
 ```
 
 ### One-Command Interactive Workflow
@@ -727,6 +762,9 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `reverse_geocode.py` | GPS → place names (city/region/country) | Lat/lon coordinates | Place name text |
 | `edit_exif.py` | EXIF editing: strip GPS, set dates, write tags | Index DB or file paths | Modified files + log |
 | `icloud_utils.py` · `photo_metadata.py` · `constants.py` · `applescript_utils.py` | Shared internal modules (iCloud detection, hashing/EXIF, constants, AppleScript) | — | — |
+| `rotate_photos.py` | Batch-rotate photos to correct EXIF orientation | `.db` index or directory | Rotated files + CSV report |
+| `convert_format.py` | Convert JPEG/HEIC/PNG → WEBP/AVIF (save 30-50% space) | `.db` index or directory | Converted files + CSV report |
+| `fix_gps.py` | Infer missing GPS from temporally adjacent photos | `.db` index | DB update + optional EXIF + CSV |
 
 ## Requirements
 

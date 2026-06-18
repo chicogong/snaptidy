@@ -180,6 +180,7 @@ SQLite `photos` table columns:
 - Priority: folder_tag, scan_root, scanned_at
 - Quality: blur_score, brightness, contrast, quality_score (from assess_quality.py)
 - iCloud: icloud_state (from scan_photos.py — "local", "icloud_placeholder", "downloaded", "download_failed")
+- v3.13: is_animated (INTEGER 0/1 — GIF/animated WebP/APNG), orientation (INTEGER 1-8 — EXIF Orientation)
 - Photos.app exclusive: photos_favorite, photos_hidden, photos_screenshot, photos_duplicate_visibility, photos_cloud_state, photos_albums, photos_shared_albums, photos_icloud_locally_available
 
 Schema migration: `ALTER TABLE ADD COLUMN` with try/except (backward compatible).
@@ -460,3 +461,81 @@ Before downloading, the script:
 | `find_exact_duplicates.py` | `--exclude-icloud` | Excludes `icloud_state IN ('icloud_placeholder', 'download_failed')` from SHA-256 dedup |
 | `find_similar_photos.py` | `--exclude-icloud` | Excludes from pHash, scaled, cross-format, and detect-all modes |
 | `library_stats.py` | (automatic) | Shows `icloud_placeholder`, `icloud_downloaded`, `icloud_failed` counts in health flags |
+
+## v3.13 — Rotation, Conversion & GPS
+
+### Batch EXIF Rotation (rotate_photos.py)
+
+Fix photos with incorrect EXIF Orientation tags. Many cameras (especially iPhones) store portrait images sideways with Orientation=6. This script physically rotates pixels and resets Orientation to 1.
+
+```bash
+# Dry-run: preview which images need rotation
+python3 rotate_photos.py -i ./photo_index.db --dry-run
+
+# Apply rotation (updates DB orientation column too)
+python3 rotate_photos.py -i ./photo_index.db
+
+# Only fix specific orientation (e.g. 6 = portrait 90°)
+python3 rotate_photos.py -i ./photo_index.db --orientation 6
+
+# Scan directory without prior index
+python3 rotate_photos.py -s /path/to/photos --dry-run
+```
+
+### Format Conversion (convert_format.py)
+
+Convert JPEG/HEIC/PNG to WEBP (30% savings) or AVIF (50% savings). Preserves EXIF metadata and file mtime.
+
+```bash
+# Dry-run: preview space savings
+python3 convert_format.py -i ./photo_index.db --to webp --dry-run
+
+# Convert to WEBP (quality 85, delete originals)
+python3 convert_format.py -i ./photo_index.db --to webp --quality 85
+
+# Convert only large files to AVIF, keep originals
+python3 convert_format.py -s /path/to/photos --to avif --min-size 500 --keep-originals
+
+# Lossless conversion
+python3 convert_format.py -i ./photo_index.db --to webp --lossless
+```
+
+### GPS Neighbor Inference (fix_gps.py)
+
+Infer missing GPS coordinates from photos taken within ±10 minutes. Uses closest reference or averages multiple. Supports `--write-exif` to write to image files.
+
+```bash
+# Dry-run: preview inferred GPS
+python3 fix_gps.py -i ./photo_index.db --dry-run
+
+# Write inferred GPS to DB
+python3 fix_gps.py -i ./photo_index.db
+
+# Also write to EXIF in the image files
+python3 fix_gps.py -i ./photo_index.db --write-exif
+
+# Use wider time window (30 minutes)
+python3 fix_gps.py -i ./photo_index.db --window 30
+```
+
+### New DB Columns
+
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| `is_animated` | INTEGER | 0 | 1 if GIF/animated WebP/APNG |
+| `orientation` | INTEGER | 1 | EXIF Orientation (1-8), 1 = normal |
+
+### Scan Output
+
+`scan_photos.py` now reports:
+- `🎬 N animated images detected (GIF/animated WebP/APNG)`
+- `🔄 N images with EXIF orientation tag (use rotate_photos.py to fix)`
+- `⚠️ N AVIF files found — install pillow-avif-plugin for full support`
+
+### Decompression Bomb Protection
+
+`Image.MAX_IMAGE_PIXELS` set to 60,000,000 (60 megapixels) in `photo_metadata.py`. Prevents OOM from maliciously crafted oversized image files. Images exceeding this limit will raise `DecompressionBombError`.
+
+### AVIF Support
+
+`AVIF_SUPPORT` flag in `photo_metadata.py` — tests native Pillow AVIF (≥11) then falls back to `pillow-avif-plugin`. New `AVIF_EXTS = {"avif"}` in `constants.py`. Scan warns about AVIF files if support is missing.

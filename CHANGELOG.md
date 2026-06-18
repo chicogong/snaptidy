@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0] - 2026-06-18
+
+### Added
+
+- **AVIF format support** — `photo_metadata.py` now detects and registers
+  AVIF decode support (native Pillow ≥11 or `pillow-avif-plugin`); new
+  `AVIF_EXTS` / `AVIF_EXTENSIONS` in `constants.py`; scan reports
+  unconverted AVIF files with install hint
+- **Decompression bomb protection** — `Image.MAX_IMAGE_PIXELS` set to
+  60 megapixels in `photo_metadata.py`, prevents OOM from malicious
+  crafted image files
+- **Animated image detection** — `is_animated_image()` in
+  `photo_metadata.py` detects GIF / animated WebP / APNG; new
+  `is_animated` column in DB (INTEGER 0/1); scan reports animated count
+- **EXIF orientation detection** — `get_exif_orientation()` extracts
+  EXIF Orientation (1-8); new `orientation` column in DB (INTEGER);
+  scan reports rotated image count
+- **`rotate_photos.py`** — batch-rotate photos to correct EXIF
+  orientation: applies pixel rotation, resets Orientation to 1,
+  preserves EXIF metadata; supports `--dry-run`, `--orientation N`
+  filter, directory scan mode, CSV report, index DB update
+- **`convert_format.py`** — batch convert JPEG/HEIC/PNG → WEBP/AVIF:
+  preserves EXIF GPS/date/camera metadata, preserves file mtime,
+  configurable quality (1-100) and lossless mode, `--min-size KB`
+  filter, `--keep-originals`, `--dry-run` with space savings estimate,
+  CSV report
+- **`fix_gps.py`** — infer missing GPS from temporally adjacent photos:
+  finds photos taken within ±N minutes (default 10, max 60) of a
+  GPS-bearing photo, uses closest reference or averages multiple;
+  `--dry-run`, `--write-exif`, `--window N`, CSV report; 100%
+  inference rate in test burst scenario
+
+### Changed
+
+- `scan_photos.py` — new `is_animated` and `orientation` DB columns
+  with migration; scan summary now reports animated images count and
+  images with EXIF orientation tag; imports `is_animated_image` and
+  `get_exif_orientation` from `photo_metadata`
+- `constants.py` — new `AVIF_EXTS = {"avif"}` and
+  `AVIF_EXTENSIONS = {".avif"}`; `missing_dependencies()` now reports
+  `pillow-avif-plugin` when AVIF support is missing
+- `photo_metadata.py` — `AVIF_SUPPORT` flag (tests native Pillow AVIF
+  then falls back to `pillow-avif-plugin`); new functions:
+  `is_animated_image()`, `get_exif_orientation()`,
+  `apply_exif_orientation()`
+
 ## [3.12.0] - 2026-06-18
 
 ### Added

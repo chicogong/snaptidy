@@ -28,6 +28,7 @@ VIDEO_EXTS = {
 # Convenient subsets (no leading dot)
 JPEG_EXTS = {"jpg", "jpeg"}
 HEIC_EXTS = {"heic", "heif"}
+AVIF_EXTS = {"avif"}
 
 # Combined media set
 MEDIA_EXTS = IMAGE_EXTS | VIDEO_EXTS
@@ -38,6 +39,7 @@ VIDEO_EXTENSIONS = {f".{e}" for e in VIDEO_EXTS}
 PHOTO_EXTENSIONS = {f".{e}" for e in MEDIA_EXTS}
 JPEG_EXTENSIONS = {f".{e}" for e in JPEG_EXTS}
 HEIC_EXTENSIONS = {f".{e}" for e in HEIC_EXTS}
+AVIF_EXTENSIONS = {f".{e}" for e in AVIF_EXTS}
 
 # ---------------------------------------------------------------------------
 # Core Data epoch (Apple Photos.sqlite timestamps): 2001-01-01 00:00:00 UTC
