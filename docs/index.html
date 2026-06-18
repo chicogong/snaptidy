@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SnapTidy — AI-Powered Photo Deduplication & Organizer for macOS</title>
+    <meta name="description" content="SnapTidy is an AI-powered photo and video organizer for macOS. Deduplicate, tidy up, and restructure your photo library using perceptual hashing, EXIF analysis, and natural-language conversation. Zero-risk, read-only scanning with human-approved actions.">
+    <meta name="keywords" content="photo deduplication, duplicate photo finder, macOS photo organizer, perceptual hash, EXIF, photo library management, iCloud photos, HEIC, image processing, photo backup, AI photo organizer">
+    <meta name="author" content="chicogong">
+    <meta name="robots" content="index, follow">
+
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://chicogong.github.io/snaptidy/">
+    <meta property="og:title" content="SnapTidy — AI-Powered Photo Deduplication & Organizer for macOS">
+    <meta property="og:description" content="Deduplicate, tidy up, and restructure your photo library with perceptual hashing, EXIF analysis, and natural-language conversation. Zero-risk, read-only scan with human-approved actions.">
+    <meta property="og:image" content="https://opengraph.githubassets.com/1/chicogong/snaptidy">
+    <meta property="og:site_name" content="SnapTidy">
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:url" content="https://chicogong.github.io/snaptidy/">
+    <meta name="twitter:title" content="SnapTidy — AI-Powered Photo Deduplication & Organizer for macOS">
+    <meta name="twitter:description" content="Deduplicate, tidy up, and restructure your photo library with perceptual hashing, EXIF analysis, and natural-language conversation. Zero-risk, read-only scan with human-approved actions.">
+    <meta name="twitter:image" content="https://opengraph.githubassets.com/1/chicogong/snaptidy">
+
+    <!-- Canonical -->
+    <link rel="canonical" href="https://chicogong.github.io/snaptidy/">
+
+    <!-- Google Search Console verification placeholder -->
+    <!-- Add your verification meta tag here: -->
+    <!-- <meta name="google-site-verification" content="YOUR_VERIFICATION_CODE" /> -->
+
+    <!-- JSON-LD Structured Data -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        "name": "SnapTidy",
+        "description": "AI-powered photo and video organizer for macOS. Deduplicate, tidy up, and restructure your photo library using perceptual hashing, EXIF analysis, and natural-language conversation.",
+        "url": "https://chicogong.github.io/snaptidy/",
+        "applicationCategory": "MultimediaApplication",
+        "operatingSystem": "macOS",
+        "softwareVersion": "3.13.1",
+        "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "USD"
+        },
+        "license": "https://github.com/chicogong/snaptidy/blob/main/LICENSE",
+        "codeRepository": "https://github.com/chicogong/snaptidy",
+        "programmingLanguage": "Python",
+        "featureList": [
+            "SHA-256 exact deduplication",
+            "Perceptual hash (pHash) similarity detection",
+            "Apple Quality Vector detection (zero-dependency)",
+            "Cross-format deduplication (HEIC + JPEG)",
+            "Scaled duplicate detection (same photo, different resolutions)",
+            "Burst photo detection via SubSecTime",
+            "EXIF metadata extraction and editing",
+            "GPS reverse geocoding (GPS to place names)",
+            "Privacy risk detection (ID cards, passports, bank cards)",
+            "Quality assessment (blur, brightness, contrast)",
+            "Live Photo detection and protection",
+            "Orphan RAW file cleanup",
+            "Interactive HTML timeline viewer",
+            "Google Takeout import with metadata merge",
+            "GPX geotagging",
+            "Event clustering by time and location",
+            "Video deduplication via frame sampling",
+            "Smart rename by EXIF metadata",
+            "Corrupted file detection",
+            "EXIF date correction",
+            "Backup verification",
+            "Duplicate folder detection",
+            "Space what-if analysis",
+            "iCloud optimization handling",
+            "Batch EXIF rotation fix",
+            "Format conversion (JPEG/HEIC to WEBP/AVIF)",
+            "GPS neighbor inference",
+            "Animated image detection (GIF/animated WebP/APNG)",
+            "Decompression bomb protection"
+        ],
+        "author": {
+            "@type": "Person",
+            "name": "chicogong",
+            "url": "https://github.com/chicogong"
+        }
+    }
+    </script>
+
+    <style>
+        :root {
+            --bg: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-muted: #7d8590;
+            --accent: #58a6ff;
+            --accent-hover: #79c0ff;
+            --green: #3fb950;
+            --purple: #bc8cff;
+            --orange: #d29922;
+            --red: #f85149;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+        }
+
+        .container { max-width: 968px; margin: 0 auto; padding: 0 24px; }
+
+        /* Hero */
+        .hero {
+            text-align: center;
+            padding: 80px 24px 60px;
+            background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg) 100%);
+            border-bottom: 1px solid var(--border);
+        }
+        .hero h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .hero .tagline {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            max-width: 640px;
+            margin: 0 auto 32px;
+        }
+        .hero .badges {
+            display: flex;
+            gap: 8px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 32px;
+        }
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            border: 1px solid var(--border);
+            background: var(--bg-tertiary);
+        }
+        .cta-group {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 28px;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .btn-primary {
+            background: var(--accent);
+            color: #fff;
+        }
+        .btn-primary:hover { background: var(--accent-hover); transform: translateY(-1px); }
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text);
+            border: 1px solid var(--border);
+        }
+        .btn-secondary:hover { border-color: var(--accent); }
+
+        /* Sections */
+        section { padding: 64px 0; border-bottom: 1px solid var(--border); }
+        section h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 24px;
+        }
+
+        /* Feature Grid */
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 16px;
+        }
+        .feature-card {
+            padding: 24px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            transition: border-color 0.2s;
+        }
+        .feature-card:hover { border-color: var(--accent); }
+        .feature-card .icon { font-size: 1.5rem; margin-bottom: 8px; }
+        .feature-card h3 { font-size: 1.1rem; margin-bottom: 6px; }
+        .feature-card p { font-size: 0.9rem; color: var(--text-muted); }
+
+        /* Comparison Table */
+        .comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+        .comparison-table th, .comparison-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        .comparison-table th {
+            font-weight: 700;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-transform: uppercase;
+        }
+        .comparison-table td:first-child { font-weight: 600; }
+        .check { color: var(--green); }
+        .cross { color: var(--red); }
+
+        /* Stats */
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 24px;
+            text-align: center;
+        }
+        .stat .number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--accent);
+        }
+        .stat .label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        /* Code */
+        pre {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 16px;
+            overflow-x: auto;
+            margin: 16px 0;
+        }
+        code {
+            font-family: "SF Mono", "Fira Code", "Cascadia Code", monospace;
+            font-size: 0.875rem;
+        }
+        .code-inline {
+            background: var(--bg-tertiary);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.85em;
+        }
+
+        /* Pipeline */
+        .pipeline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin: 24px 0;
+        }
+        .pipeline-step {
+            padding: 10px 20px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        .pipeline-arrow { color: var(--text-muted); }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 48px 24px;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        footer a { color: var(--accent); text-decoration: none; }
+        footer a:hover { text-decoration: underline; }
+
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2rem; }
+            .hero .tagline { font-size: 1rem; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="hero">
+    <div class="container">
+        <h1>SnapTidy</h1>
+        <p class="tagline">
+            AI-powered photo deduplication &amp; organizer for macOS.
+            Find duplicate photos, detect similar images, fix EXIF metadata, and restructure your library —
+            safely, through natural-language conversation.
+        </p>
+        <div class="badges">
+            <span class="badge">MIT License</span>
+            <span class="badge">Python 3.9+</span>
+            <span class="badge">macOS 13+</span>
+            <span class="badge">30+ Scripts</span>
+            <span class="badge">Zero-Install Core</span>
+        </div>
+        <div class="cta-group">
+            <a class="btn btn-primary" href="https://github.com/chicogong/snaptidy">View on GitHub</a>
+            <a class="btn btn-secondary" href="https://github.com/chicogong/snaptidy#quick-start">Quick Start</a>
+        </div>
+    </div>
+</div>
+
+<section>
+    <div class="container">
+        <h2>How It Works</h2>
+        <p>SnapTidy takes a safety-first approach to photo library management. No automatic deletion — everything is read-only until you explicitly approve.</p>
+        <div class="pipeline">
+            <div class="pipeline-step">1. Scan</div>
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">2. Find Duplicates</div>
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">3. Review</div>
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">4. Generate Plan</div>
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">5. Apply</div>
+            <span class="pipeline-arrow">→</span>
+            <div class="pipeline-step">6. Undo</div>
+        </div>
+    </div>
+</section>
+
+<section>
+    <div class="container">
+        <h2>Key Features</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="icon">🎯</div>
+                <h3>SHA-256 Exact Dedup</h3>
+                <p>Find byte-perfect duplicate files across your entire photo library.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">👁️</div>
+                <h3>Perceptual Hash Similarity</h3>
+                <p>Detect visually identical images using pHash with fuzzy Hamming distance threshold.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🧠</div>
+                <h3>Apple Quality Vectors</h3>
+                <p>Zero-dependency similarity via Apple's pre-computed 17-dim ML feature vectors.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔀</div>
+                <h3>Cross-Format Dedup</h3>
+                <p>Detect HEIC + JPEG of the same photo across different formats.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">📍</div>
+                <h3>Reverse Geocoding</h3>
+                <p>Convert GPS coordinates to place names (city/region/country) with persistent cache.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🔍</div>
+                <h3>Privacy Risk Detection</h3>
+                <p>Find sensitive documents (ID cards, bank cards, passports) in your library.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🎬</div>
+                <h3>Video Dedup</h3>
+                <p>Frame sampling + pHash for duplicate and similar video detection.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">☁️</div>
+                <h3>iCloud Optimization</h3>
+                <p>Detect, skip, or download iCloud placeholder thumbnails before scanning.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon">🛡️</div>
+                <h3>Safety-First Design</h3>
+                <p>Read-only scanning, move-only operations, Trash mode with Finder recovery.</p>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section>
+    <div class="container">
+        <h2>How SnapTidy Compares</h2>
+        <table class="comparison-table">
+            <thead>
+                <tr>
+                    <th>Feature</th>
+                    <th>SnapTidy</th>
+                    <th>Traditional Apps</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>AI Conversation-Driven</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Zero-Install Core</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Perceptual Hash Similarity</td>
+                    <td class="check">✓</td>
+                    <td class="cross">~</td>
+                </tr>
+                <tr>
+                    <td>Apple ML Vector Detection</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Cross-Format Dedup (HEIC↔JPEG)</td>
+                    <td class="check">✓</td>
+                    <td class="cross">~</td>
+                </tr>
+                <tr>
+                    <td>EXIF Metadata Editing</td>
+                    <td class="check">✓</td>
+                    <td class="cross">~</td>
+                </tr>
+                <tr>
+                    <td>GPS Reverse Geocoding</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Privacy Risk Detection</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Video Dedup</td>
+                    <td class="check">✓</td>
+                    <td class="cross">~</td>
+                </tr>
+                <tr>
+                    <td>iCloud Placeholder Handling</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Live Photo Protection</td>
+                    <td class="check">✓</td>
+                    <td class="cross">~</td>
+                </tr>
+                <tr>
+                    <td>Google Takeout Import</td>
+                    <td class="check">✓</td>
+                    <td class="cross">✗</td>
+                </tr>
+                <tr>
+                    <td>Free &amp; Open Source</td>
+                    <td class="check">✓</td>
+                    <td class="cross">~</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</section>
+
+<section>
+    <div class="container">
+        <h2>Quick Start</h2>
+        <p>Install via your AI assistant, or clone and run directly:</p>
+        <pre><code># Tell your AI assistant:
+#   "Install this skill: https://github.com/chicogong/snaptidy"
+
+# Or run directly:
+git clone https://github.com/chicogong/snaptidy.git
+cd snaptidy
+
+# Scan your photo library (zero-install core works with just Python stdlib)
+python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db
+
+# Find exact duplicates (SHA-256)
+python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./duplicates.csv
+
+# Find visually similar images (pHash)
+python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv
+
+# Generate a move plan
+python3 scripts/generate_move_plan.py --duplicates ./duplicates.csv --index ./photo_index.db --plan ./move_plan.csv
+
+# Review and apply (move to Trash, recoverable via Finder)
+python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash</code></pre>
+    </div>
+</section>
+
+<section>
+    <div class="container">
+        <h2>Performance</h2>
+        <div class="stats">
+            <div class="stat">
+                <div class="number">50K+</div>
+                <div class="label">Photos Supported</div>
+            </div>
+            <div class="stat">
+                <div class="number">30+</div>
+                <div class="label">Scripts Included</div>
+            </div>
+            <div class="stat">
+                <div class="number">15+</div>
+                <div class="label">Languages for Auto-Categorization</div>
+            </div>
+            <div class="stat">
+                <div class="number">100%</div>
+                <div class="label">Free &amp; Open Source</div>
+            </div>
+        </div>
+        <p style="text-align:center; margin-top:24px; color:var(--text-muted);">
+            Benchmarks on MacBook Pro M3 Pro: 1K photos in ~3s, 10K in ~66s, 50K in ~10min
+        </p>
+    </div>
+</section>
+
+<section>
+    <div class="container" style="text-align:center;">
+        <h2>Get Started</h2>
+        <p style="color:var(--text-muted); margin-bottom:32px;">
+            SnapTidy is free, open source, and works with Claude Code, Cursor, Windsurf, WorkBuddy, OpenClaw, and any AI agent that supports AGENTS.md.
+        </p>
+        <div class="cta-group">
+            <a class="btn btn-primary" href="https://github.com/chicogong/snaptidy">View on GitHub</a>
+            <a class="btn btn-secondary" href="https://github.com/chicogong/snaptidy#installation">Installation Guide</a>
+            <a class="btn btn-secondary" href="https://github.com/chicogong/snaptidy/blob/main/CHANGELOG.md">Changelog</a>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <p>
+        <a href="https://github.com/chicogong/snaptidy">GitHub</a> ·
+        <a href="https://github.com/chicogong/snaptidy/blob/main/LICENSE">MIT License</a> ·
+        <a href="https://github.com/chicogong/snaptidy/blob/main/CONTRIBUTING.md">Contributing</a>
+    </p>
+    <p style="margin-top:8px;">SnapTidy v3.13.1 — Built by <a href="https://github.com/chicogong">@chicogong</a></p>
+</footer>
+
+</body>
+</html>

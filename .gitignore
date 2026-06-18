@@ -32,6 +32,8 @@ snaptidy_output/
 
 # HTML reports (album report, thumbnail preview)
 *.html
+# Exception: GitHub Pages landing page
+!docs/index.html
 
 # JSON manifests and checkpoints
 photo_index.json

@@ -7,11 +7,35 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![Version](https://img.shields.io/badge/Version-3.13-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Website](https://img.shields.io/badge/Website-snaptidy.app-blue.svg?style=flat-square)](https://chicogong.github.io/snaptidy/)
 
-> AI-powered photo & video organizer for macOS. Deduplicate, tidy up, and restructure your library — safely, through conversation.
+> AI-powered photo & video organizer for macOS. Deduplicate photos, find similar images via perceptual hashing (pHash) and Apple ML vectors, fix EXIF metadata, and restructure your library — safely, through natural-language conversation. Zero-risk, read-only scan with human-approved actions. Open source, MIT licensed.
+
+## How SnapTidy Compares
+
+| Feature | SnapTidy | Commercial Apps | Basic CLI Tools |
+|---------|----------|----------------|-----------------|
+| AI conversation-driven | ✓ | ✗ | ✗ |
+| Zero-install core (stdlib only) | ✓ | ✗ | ~ |
+| Perceptual hash (pHash) similarity | ✓ | ~ | ~ |
+| Apple ML feature vector detection | ✓ | ✗ | ✗ |
+| Cross-format dedup (HEIC ↔ JPEG) | ✓ | ~ | ✗ |
+| Scaled duplicate detection | ✓ | ✗ | ✗ |
+| Burst photo detection (SubSecTime) | ✓ | ✗ | ✗ |
+| EXIF metadata extraction & editing | ✓ | ~ | ✗ |
+| GPS reverse geocoding | ✓ | ✗ | ✗ |
+| Privacy risk detection (ID/passport/bank cards) | ✓ | ✗ | ✗ |
+| iCloud placeholder handling | ✓ | ✗ | ✗ |
+| Video deduplication | ✓ | ~ | ✗ |
+| Live Photo protection | ✓ | ~ | ✗ |
+| Google Takeout import | ✓ | ✗ | ✗ |
+| Quality assessment (blur/brightness/contrast) | ✓ | ~ | ✗ |
+| macOS Trash recovery | ✓ | ~ | ✗ |
+| Free & open source | ✓ | ✗ | ~ |
 
 ## Table of Contents
 
+- [How SnapTidy Compares](#how-snaptidy-compares)
 - [Why SnapTidy?](#why-snaptidy)
 - [What's New](#whats-new-in-v313)
 - [Key Features](#key-features)
@@ -27,6 +51,7 @@
 - [Requirements](#requirements)
 - [Platform Compatibility](#platform-compatibility)
 - [Contributing](#contributing)
+- [Star History](#star-history)
 - [License](#license)
 
 ## Why SnapTidy?
@@ -818,6 +843,16 @@ See [CHANGELOG.md](CHANGELOG.md) for a history of notable changes.
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+## Star History
+
+<a href="https://star-history.com/#chicogong/snaptidy&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://star-history.com/embed?username=chicogong&repo=snaptidy&theme=dark&Date">
+    <source media="(prefers-color-scheme: light)" srcset="https://star-history.com/embed?username=chicogong&repo=snaptidy&Date">
+    <img alt="Star History Chart" src="https://star-history.com/embed?username=chicogong&repo=snaptidy&Date">
+  </picture>
+</a>
 
 ## Acknowledgments
 
