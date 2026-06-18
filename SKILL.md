@@ -1,6 +1,6 @@
 ---
 name: snaptidy
-description: Use when organizing, deduplicating, importing, auditing, repairing, or reporting on macOS photo and video collections, including folders, Photos.app libraries, external drives, Android imports, iCloud placeholders, EXIF or GPS metadata, Live Photos, corrupted media, quality scoring, 整理照片, 照片去重, 整理相册, 写真整理, or 사진 정리.
+description: Use when organizing, deduplicating, importing, auditing, repairing, or reporting on macOS photo and video collections, including folders, Photos.app libraries, external drives, Android imports, iCloud placeholders, EXIF or GPS metadata, Live Photos, corrupted media, quality scoring, 整理照片, 照片去重, 整理相册, 修复照片日期, 写真整理, or 사진 정리.
 license: MIT
 ---
 
@@ -46,18 +46,26 @@ Read [safety.md](references/safety.md) before any state-changing workflow.
 | Quick folder duplicate check | `quick_scan.py` | [detection.md](references/detection.md) |
 | Full folder organization | `organize_photos.py` or the staged workflow below | [features.md](references/features.md) |
 | Photos.app library scan | `scan_photos_library.py` | [safety.md](references/safety.md) |
-| Exact, similar, burst, scaled, or cross-format matches | `find_exact_duplicates.py` / `find_similar_photos.py` | [detection.md](references/detection.md) |
+| Exact, similar, burst, scaled, cross-format, or video matches | `find_exact_duplicates.py` / `find_similar_photos.py` / `find_similar_videos.py` | [detection.md](references/detection.md) |
 | Interactive review with keyboard shortcuts | `generate_review.py` | [features.md](references/features.md) |
 | Bad extension / mismatched content | `detect_bad_extensions.py` | [features.md](references/features.md) |
 | Corrupted or unplayable media | `detect_corrupted.py` | [features.md](references/features.md) |
 | Library health report and space analysis | `library_stats.py` | [features.md](references/features.md) |
 | Interactive timeline view | `generate_timeline.py` | [features.md](references/features.md) |
+| Timeline gap detection (missing photos) | `timeline_gaps.py` | [features.md](references/features.md) |
 | Compress photos to save space | `compress_photos.py` | [features.md](references/features.md) |
+| Format conversion (JPEG/HEIC → WEBP/AVIF) | `convert_format.py` | [features.md](references/features.md) |
 | Backup completeness verification | `verify_backup.py` | [features.md](references/features.md) |
-| External drive or Android import | `import_to_photos.py --dry-run` | [import.md](references/import.md) |
-| EXIF, date, GPS, or location work | `edit_exif.py`, `fix_dates.py`, or `fix_gps.py` | [exif-editing.md](references/exif-editing.md), [geocoding.md](references/geocoding.md) |
+| Duplicate folder detection | `find_duplicate_folders.py` | [features.md](references/features.md) |
+| Orphan RAW cleanup | `find_orphan_raw.py` | [features.md](references/features.md) |
+| External drive, Android, or Google Takeout import | `import_to_photos.py` / `import_google_takeout.py` | [import.md](references/import.md) |
+| EXIF, date, GPS, orientation, reverse geocode, or GPX work | `edit_exif.py`, `fix_dates.py`, `fix_gps.py`, `rotate_photos.py`, `reverse_geocode.py`, `gpx_geotag.py` | [exif-editing.md](references/exif-editing.md), [geocoding.md](references/geocoding.md) |
 | Privacy risk detection | `detect_privacy_risks.py` | [features.md](references/features.md) |
 | Smart rename using metadata | `rename_photos.py` | [features.md](references/features.md) |
+| Event clustering by time and location | `cluster_events.py` | [features.md](references/features.md) |
+| Photos.app vs file-system comparison | `compare_libraries.py` | [features.md](references/features.md) |
+| Album organization report (before/after diff) | `generate_album_report.py` | [features.md](references/features.md) |
+| iCloud placeholder check or pre-download | `check_icloud.py` | [features.md](references/features.md) |
 | Performance or very large libraries | parallel/incremental flags | [performance.md](references/performance.md) |
 | Failure or missing dependency | relevant tool `--help` | [troubleshooting.md](references/troubleshooting.md) |
 

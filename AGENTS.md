@@ -345,7 +345,7 @@ All v3.9 features are available as enhancement flags that run after scan but bef
 
 | Flag | Script | Effect |
 |------|--------|--------|
-| `--assess-quality` | assess_quality.py | Compute blur/brightness/contrast scores |
+| `--assess-quality` | assess_quality.py | Compute 7-dimension quality scores |
 | `--detect-live-photos` | detect_live_photos.py | Identify HEIC+MOV pairs |
 | `--generate-timeline` | generate_timeline.py | Interactive HTML timeline |
 | `--cluster-events` | cluster_events.py | Auto-group photos into events |

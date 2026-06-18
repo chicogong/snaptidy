@@ -94,6 +94,25 @@ class SkillContractTests(unittest.TestCase):
         for script in scripts:
             self.assertTrue((ROOT / "scripts" / script).is_file(), script)
 
+    def test_all_cli_scripts_documented(self) -> None:
+        """Forward check: every CLI script in scripts/ must appear in SKILL.md."""
+        internal = {
+            "constants.py",
+            "photo_metadata.py",
+            "icloud_utils.py",
+            "applescript_utils.py",
+            "test_skill_contract.py",
+            "test_v313_integration.py",
+        }
+        all_scripts = {
+            f.name
+            for f in (ROOT / "scripts").glob("*.py")
+            if f.name not in internal
+        }
+        documented = set(re.findall(r"([a-z0-9_]+\.py)", self.body))
+        missing = all_scripts - documented
+        self.assertFalse(missing, f"Scripts not mentioned in SKILL.md: {sorted(missing)}")
+
     def test_release_versions_match(self) -> None:
         clawhub = (ROOT / "clawhub.yaml").read_text(encoding="utf-8")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -112,20 +131,22 @@ class SkillContractTests(unittest.TestCase):
         self.assertIn("$snaptidy", adapter)
         self.assertNotIn("dependencies:", adapter)
 
-    def test_representative_cli_help(self) -> None:
-        scripts = (
-            "quick_scan.py",
-            "organize_photos.py",
-            "scan_photos.py",
-            "scan_photos_library.py",
-            "find_exact_duplicates.py",
-            "find_similar_photos.py",
-            "apply_move_plan.py",
-            "import_to_photos.py",
-            "edit_exif.py",
-            "library_stats.py",
+    def test_all_cli_scripts_help(self) -> None:
+        """Every CLI script must respond to --help with exit code 0."""
+        internal = {
+            "constants.py",
+            "photo_metadata.py",
+            "icloud_utils.py",
+            "applescript_utils.py",
+            "test_skill_contract.py",
+            "test_v313_integration.py",
+        }
+        cli_scripts = sorted(
+            f.name
+            for f in (ROOT / "scripts").glob("*.py")
+            if f.name not in internal
         )
-        for script in scripts:
+        for script in cli_scripts:
             result = subprocess.run(
                 [sys.executable, str(ROOT / "scripts" / script), "--help"],
                 cwd=ROOT,
@@ -133,7 +154,7 @@ class SkillContractTests(unittest.TestCase):
                 text=True,
                 timeout=20,
             )
-            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.returncode, 0, f"{script}: {result.stderr}")
 
 
 if __name__ == "__main__":

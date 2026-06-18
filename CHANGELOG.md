@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.2] - 2026-06-18
+
+### Fixed
+
+- **SKILL.md routing table completed** — 13 scripts were missing from the
+  intent routing table: `check_icloud.py`, `cluster_events.py`,
+  `compare_libraries.py`, `convert_format.py`, `find_duplicate_folders.py`,
+  `find_orphan_raw.py`, `find_similar_videos.py`, `generate_album_report.py`,
+  `gpx_geotag.py`, `import_google_takeout.py`, `reverse_geocode.py`,
+  `rotate_photos.py`, `timeline_gaps.py`. All now reachable by AI agents.
+
+- **Contract test: forward check added** — `test_all_cli_scripts_documented`
+  verifies every CLI script in `scripts/` is mentioned in SKILL.md, preventing
+  future regressions.
+
+- **Contract test: full CLI help coverage** — `test_all_cli_scripts_help`
+  replaces the 10-script representative test; now covers all 38 CLI scripts.
+
+- **README anchor links fixed** — `[What's New](#whats-new-in-v313)` →
+  `#whats-new-in-v314` (both README.md and README.zh-CN.md).
+
+- **Quality assessment descriptions updated** — all references to
+  "blur/brightness/contrast" (3-dim) in README Key Features, Scripts
+  Reference, CLAUDE.md, and AGENTS.md updated to "7-dimension scoring".
+
+- **Parameter names standardized** — CONTRIBUTING.md and CLAUDE.md updated
+  from `--input` to `--source` and `-i` to `--index`.
+
+- **Trigger words synced** — SKILL.md description now includes "修复照片日期"
+  to match clawhub.yaml trigger list.
+
+### Added
+
+- `.cursor/` and `.windsurf/` added to `.gitignore` (IDE-specific config
+  should not be tracked).
+
 ## [3.14.1] - 2026-06-18
 
 ### Changed

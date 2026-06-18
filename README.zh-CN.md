@@ -7,7 +7,7 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/Version-3.14.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.14.2-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 [![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > macOS 照片视频整理去重工具。通过感知哈希 (pHash)、Apple ML 特征向量和 SHA-256 检测重复照片，支持跨格式去重（HEIC↔JPEG）、EXIF 修复、GPS 逆地理编码。AI 对话驱动，只读扫描，人工确认后操作，零风险。开源免费 (MIT)。
@@ -34,7 +34,7 @@
 | 视频去重 | ✓ | ~ | ✗ |
 | Live Photo 保护 | ✓ | ~ | ✗ |
 | Google Takeout 导入 | ✓ | ✗ | ✗ |
-| 质量评估（模糊/亮度/对比度） | ✓ | ~ | ✗ |
+| 质量评估（7 维评分） | ✓ | ~ | ✗ |
 | macOS 废纸篓恢复 | ✓ | ~ | ✗ |
 | 免费开源 | ✓ | ✗ | ~ |
 
@@ -42,7 +42,7 @@
 
 - [SnapTidy 功能对比](#snaptidy-功能对比)
 - [为什么选择 SnapTidy？](#为什么选择-snaptidy)
-- [新功能](#v313-新功能)
+- [新功能](#v314-新功能)
 - [核心特性](#核心特性)
 - [安装](#安装)
 - [工作原理](#工作原理)
@@ -200,7 +200,7 @@
 - 🌍 **按地点整理** — 将照片整理到 `国家/地区/城市/` 文件夹结构
 - 🔍 **隐私风险检测** — 查找敏感文档（身份证、银行卡、护照、密码、医疗记录）基于文件名/文件夹/分类/尺寸启发式
 - 📋 **交互式审核** — HTML 审核页面，智能策略规则（元数据/最早/最新/分辨率/偏好相册/画质），相册展示，收藏保护
-- 🎯 **照片质量评估** — 模糊/亮度/对比度评分，集成到去重策略和审核
+- 🎯 **照片质量评估** — 7 维评分（锐度、曝光、对比度、分辨率、格式、文件大小、EXIF 完整度），集成到去重策略和审核
 - 🎵 **Live Photo 识别** — 去重时保持 Live Photo 配对完整
 - 📷 **RAW 孤儿清理** — 找到无 JPEG 伴侣的 RAW 文件
 - 📅 **时间线视图** — 交互式 HTML 时间线，缩放和分类筛选
@@ -552,7 +552,7 @@ python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths pho
 | `generate_preview.py` | HTML 缩略图预览 | 重复 CSV + 索引 | `preview.html` |
 | `generate_review.py` | 交互式审核页面（智能策略规则） | `.db` 索引 + 重复 CSV | `review.html` + 决策 CSV |
 | `detect_privacy_risks.py` | 查找敏感文档（身份证/银行卡/护照/密码） | `.db` 索引 | `.json` / `.csv` / `.txt` 报告 |
-| `assess_quality.py` | 模糊/亮度/对比度/质量评分(0-100) | `.db` 索引 | DB 列 + `.csv` / `.json` 报告 |
+| `assess_quality.py` | 7 维质量评分(0-100) | `.db` 索引 | DB 列 + `.csv` / `.json` 报告 |
 | `detect_live_photos.py` | 识别 Live Photo 配对(HEIC+MOV) | `.db` 索引 | `live_photo_group` 列 |
 | `find_orphan_raw.py` | 查找无 JPEG 伴侣的 RAW 文件 | `.db` 索引 | `.csv` / `.json` 报告 |
 | `generate_timeline.py` | 交互式 HTML 时间线（年/月/日缩放） | `.db` 索引 | `timeline.html` |

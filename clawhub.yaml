@@ -1,5 +1,5 @@
 name: snaptidy
-version: 3.14.1
+version: 3.14.2
 description: |
   Safety-first macOS photo and video organizer. Scan folders or Photos.app, detect exact and perceptual duplicates, assess seven quality dimensions, handle Live Photos and iCloud placeholders, audit integrity, repair metadata, and import from external drives or Android with reviewable plans and recovery guidance.
   Trigger: "organize my photos", "find duplicate photos", "dedup my library", "audit photo library", "repair EXIF", "import photos", "整理照片", "照片去重", "整理相册", "修复照片日期", "写真整理", "사진 정리"

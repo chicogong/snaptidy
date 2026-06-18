@@ -56,10 +56,10 @@ Before submitting a PR, verify your changes:
 
 ```bash
 # Quick smoke test — scan a small directory
-python3 scripts/scan_photos.py --input /tmp/test_photos --output /tmp/test_index.db
+python3 scripts/scan_photos.py --source /tmp/test_photos --output /tmp/test_index.db
 
 # Run the full pipeline on test data
-python3 scripts/scan_photos.py --input /tmp/test_photos --output /tmp/test_index.db
+python3 scripts/scan_photos.py --source /tmp/test_photos --output /tmp/test_index.db
 python3 scripts/find_exact_duplicates.py --index /tmp/test_index.db --output /tmp/test_dupes.csv
 python3 scripts/find_similar_photos.py --index /tmp/test_index.db --output /tmp/test_similar.csv
 python3 scripts/generate_move_plan.py --duplicates /tmp/test_dupes.csv --index /tmp/test_index.db --plan /tmp/test_plan.csv --target-root /tmp/test_photos
@@ -83,7 +83,7 @@ chore: update dependencies
 
 - **Python 3.9+**, PEP 8
 - 4-space indent, max line length 120
-- CLI scripts use `argparse` with `--input`/`--output` style flags
+- CLI scripts use `argparse` with `--source`/`--index`/`--output` style flags
 - All CSV output uses UTF-8 with BOM for Excel compatibility
 - No pandas, numpy, or other heavy dependencies unless absolutely necessary
 - SQLite is preferred over CSV for output (better performance at scale)

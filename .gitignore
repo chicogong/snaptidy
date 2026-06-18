@@ -54,3 +54,7 @@ review/
 
 # Test data (large test photos, generated artifacts)
 test_data/
+
+# IDE-specific config directories (platform rules live in SKILL.md / AGENTS.md)
+.cursor/
+.windsurf/

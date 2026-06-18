@@ -6,7 +6,7 @@ This project is an AI skill for organizing photos/videos on macOS.
 
 - Safety first: never delete files, only move them
 - SQLite (.db) is the recommended storage format; CSV is fallback
-- Scripts use argparse with `--input`, `--output` style flags
+- Scripts use argparse with `--source`, `--index`, `--output` style flags
 - Full Disk Access must be enabled for the terminal
 - For Photos.app libraries, use `scan_photos_library.py` (not `scan_photos.py`)
 - Always confirm before applying moves: Fast path (1-9) or Safe path (10+)
@@ -19,7 +19,7 @@ This project is an AI skill for organizing photos/videos on macOS.
 
 ```bash
 # 1a. Scan file-system folders
-python3 scripts/scan_photos.py --input /path/to/photos --output ./photo_index.db
+python3 scripts/scan_photos.py --source /path/to/photos --output ./photo_index.db
 
 # 1b. Scan Photos.app library (reads Photos.sqlite)
 python3 scripts/scan_photos_library.py --library ~/Pictures/Photos\ Library.photoslibrary --output ./photo_index.db
@@ -64,7 +64,7 @@ python3 scripts/apply_move_plan.py --plan ./plan.csv --mode trash
 # 7. Undo if needed
 python3 scripts/apply_move_plan.py --plan ./plan.csv --undo
 
-# 8. Assess quality (blur/brightness/contrast → DB columns)
+# 8. Assess quality (7-dimension scoring → DB columns)
 python3 scripts/assess_quality.py --index ./photo_index.db
 
 # 9. Detect Live Photo pairs
@@ -111,13 +111,13 @@ python3 scripts/find_duplicate_folders.py --index ./photo_index.db
 python3 scripts/library_stats.py --index ./photo_index.db --what-if
 
 # 23. Check iCloud placeholder files (before scanning)
-python3 scripts/check_icloud.py -i ~/Pictures/Photos --report
+python3 scripts/check_icloud.py --source ~/Pictures/Photos --report
 
 # 24. Download iCloud files (with disk space safety check)
-python3 scripts/check_icloud.py -i ~/Pictures/Photos --download
+python3 scripts/check_icloud.py --source ~/Pictures/Photos --download
 # When disk space is limited:
-# python3 scripts/check_icloud.py -i ~/Pictures/Photos --download --max-download 100
-# python3 scripts/check_icloud.py -i ~/Pictures/Photos --download --min-free 2
+# python3 scripts/check_icloud.py --source ~/Pictures/Photos --download --max-download 100
+# python3 scripts/check_icloud.py --source ~/Pictures/Photos --download --min-free 2
 ```
 
 ### Option B: Full pipeline with v3.10 enhancements
@@ -310,17 +310,17 @@ Safety: `.bak` backup created before edit, restored on error, cleaned on success
 
 ```bash
 # 25. Fix EXIF rotation (dry-run first, then apply)
-python3 scripts/rotate_photos.py -i ./photo_index.db --dry-run
-python3 scripts/rotate_photos.py -i ./photo_index.db
+python3 scripts/rotate_photos.py --index ./photo_index.db --dry-run
+python3 scripts/rotate_photos.py --index ./photo_index.db
 
 # 26. Convert JPEG/HEIC to WEBP (save 30-50% space)
-python3 scripts/convert_format.py -i ./photo_index.db --to webp --dry-run
-python3 scripts/convert_format.py -i ./photo_index.db --to webp --quality 85
+python3 scripts/convert_format.py --index ./photo_index.db --to webp --dry-run
+python3 scripts/convert_format.py --index ./photo_index.db --to webp --quality 85
 
 # Convert only large files to AVIF, keep originals
-python3 scripts/convert_format.py -s /path/to/photos --to avif --min-size 500 --keep-originals
+python3 scripts/convert_format.py --source /path/to/photos --to avif --min-size 500 --keep-originals
 
 # 27. Infer missing GPS from temporally adjacent photos
-python3 scripts/fix_gps.py -i ./photo_index.db --dry-run
-python3 scripts/fix_gps.py -i ./photo_index.db --write-exif
+python3 scripts/fix_gps.py --index ./photo_index.db --dry-run
+python3 scripts/fix_gps.py --index ./photo_index.db --write-exif
 ```

@@ -7,7 +7,7 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/Version-3.14.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.14.2-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 [![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > AI-powered photo & video organizer for macOS. Deduplicate photos, find similar images via perceptual hashing (pHash) and Apple ML vectors, fix EXIF metadata, and restructure your library — safely, through natural-language conversation. Zero-risk, read-only scan with human-approved actions. Open source, MIT licensed.
@@ -42,7 +42,7 @@
 
 - [How SnapTidy Compares](#how-snaptidy-compares)
 - [Why SnapTidy?](#why-snaptidy)
-- [What's New](#whats-new-in-v313)
+- [What's New](#whats-new-in-v314)
 - [Key Features](#key-features)
 - [Installation](#installation)
 - [How It Works](#how-it-works)
@@ -202,7 +202,7 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 - 📊 **Library Health & Insights** — Read-only stats report: category/format/year/**location** breakdowns, health flags, top space consumers (terminal / JSON / HTML)
 - 🔍 **Privacy Risk Detection** — Find sensitive documents (ID cards, bank cards, passports, passwords, medical records) via filename/folder/category/dimension heuristics
 - 📋 **Interactive Review** — HTML review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album/quality), album display, favorites protection
-- 🎯 **Quality Assessment** — Blur/brightness/contrast scoring, integrated with dedup & review
+- 🎯 **Quality Assessment** — 7-dimension scoring (sharpness, exposure, contrast, resolution, format, file size, EXIF completeness), integrated with dedup & review
 - 🎵 **Live Photo Detection** — Keep Live Photo pairs together during dedup
 - 📷 **Orphan RAW Cleanup** — Find RAW files without JPEG companion
 - 📅 **Timeline Viewer** — Interactive HTML timeline with zoom and category filters
@@ -502,7 +502,7 @@ python3 scripts/detect_privacy_risks.py --index ./photo_index.db --output ./repo
 
 ### Quality Assessment
 
-Assess blur/brightness/contrast for smarter dedup decisions:
+Assess 7 quality dimensions for smarter dedup decisions:
 
 ```bash
 # Assess quality and write scores to DB
@@ -795,7 +795,7 @@ When deciding which duplicate to KEEP, SnapTidy scores files by:
 | `generate_preview.py` | HTML thumbnail preview | Duplicates CSV + index | `preview.html` |
 | `generate_review.py` | Interactive HTML review with smart strategy rules | `.db` index + duplicates CSVs | `review.html` + decision CSV |
 | `detect_privacy_risks.py` | Find sensitive documents (ID/bank cards, passports, passwords) | `.db` index | `.json` / `.csv` / `.txt` report |
-| `assess_quality.py` | Blur/brightness/contrast/quality score (0-100) | `.db` index | DB columns + `.csv` / `.json` report |
+| `assess_quality.py` | 7-dimension quality scoring (0-100) | `.db` index | DB columns + `.csv` / `.json` report |
 | `detect_live_photos.py` | Identify Live Photo pairs (HEIC+MOV) | `.db` index | `live_photo_group` column |
 | `find_orphan_raw.py` | Find orphan RAW files without JPEG companion | `.db` index | `.csv` / `.json` report |
 | `generate_timeline.py` | Interactive HTML timeline (year/month/day zoom) | `.db` index | `timeline.html` |
