@@ -102,6 +102,10 @@ def _check_magic_number(file_path: str) -> tuple:
         elif ext == ".bmp":
             if not header.startswith(b"BM"):
                 return False, "bad_header", "BMP magic number mismatch"
+        elif ext == ".avif":
+            # AVIF files start with a ftyp box containing 'avif' or 'avis' brand
+            if not (b"avif" in header[4:12] or b"avis" in header[4:12]):
+                return False, "bad_header", "AVIF ftyp brand mismatch"
 
         return True, None, None
     except Exception as e:

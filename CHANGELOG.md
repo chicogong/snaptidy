@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.1] - 2026-06-17
+
+### Fixed
+
+- **Integration gap: animated image filtering** — v3.13 added
+  `is_animated_image()` to `photo_metadata.py` but 8 downstream scripts
+  were not updated to use it. This release propagates animated-image
+  awareness to all affected scripts:
+  - `find_similar_photos.py` — animated GIFs/WebP now excluded from
+    pHash matching (unreliable hash for multi-frame images) in
+    `group_by_phash_db()`, `detect_scaled_duplicates_db()`, and
+    `detect_cross_format_duplicates_db()`
+  - `compress_photos.py` — animated images now skipped (compressing
+    GIF/animated WebP loses frames); two-tier check: DB column first,
+    then on-disk verification; also fixed pre-existing bug where
+    `extension` with leading dot never matched `IMAGE_EXTS` (which
+    stores dotless extensions)
+  - `convert_format.py` — animated images now skipped before
+    conversion (format conversion would lose animation frames); new
+    `skipped_animated` counter and report column
+  - `detect_corrupted.py` — AVIF magic number check added to
+    `_check_magic_number()` fallback (validates `ftyp` box contains
+    `avif` or `avis` brand at bytes 4-12)
+  - `library_stats.py` — new health flags: `animated` count and
+    `rotated` count (EXIF orientation > 1); terminal output and
+    HTML report cards updated
+  - `generate_review.py` — `is_animated` and `orientation` fields
+    added to all three item-building sections (duplicate groups,
+    similar groups, standalone items); HTML badge rendering with
+    animated (🎬) and rotation (🔄) indicators
+  - `scan_photos_library.py` — `is_animated` and `orientation`
+    columns added to schema migration list; values computed during
+    scan via `is_animated_image()` and `get_exif_orientation()`
+- `test_v313_integration.py` — new integration test suite (6 tests)
+  verifying all downstream integrations work correctly
+
 ## [3.13.0] - 2026-06-18
 
 ### Added

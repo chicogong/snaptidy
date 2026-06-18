@@ -34,7 +34,7 @@ from photo_metadata import (
     PILLOW_AVAILABLE, PIEXIF_AVAILABLE, IMAGEHASH_AVAILABLE, HEIC_SUPPORT,
     compute_sha256, get_exif_datetime, get_gps_coords, get_camera_info,
     has_exif_data, compute_phash, get_image_size, get_subsec_time,
-    compute_aspect_ratio,
+    compute_aspect_ratio, is_animated_image, get_exif_orientation,
 )
 from constants import (
     IMAGE_EXTS, VIDEO_EXTS, HEIC_EXTS, CORE_DATA_EPOCH, get_format_family, core_data_to_iso,
@@ -132,6 +132,8 @@ def _open_output_db(output_path: str) -> sqlite3.Connection:
         ("place_region", "TEXT DEFAULT ''"),
         ("place_country", "TEXT DEFAULT ''"),
         ("place_country_code", "TEXT DEFAULT ''"),
+        ("is_animated", "INTEGER DEFAULT 0"),
+        ("orientation", "INTEGER DEFAULT 1"),
     ]
     for col_name, col_type in defined_cols:
         if col_name not in existing_cols:
@@ -418,6 +420,8 @@ def scan_photos_library(library_path: str, output_path: str,
         subsec_time = ""
         aspect_ratio = compute_aspect_ratio(width, height)
         format_family = get_format_family(ext)
+        is_animated_val = 0
+        orientation_val = 1
 
         if ext in IMAGE_EXTS:
             exif_dt = get_exif_datetime(file_path)
@@ -432,6 +436,8 @@ def scan_photos_library(library_path: str, output_path: str,
             gps_lat, gps_lon = get_gps_coords(file_path)
             camera_make, camera_model = get_camera_info(file_path)
             has_exif_val = 1 if has_exif_data(file_path) else 0
+            is_animated_val = 1 if is_animated_image(file_path) else 0
+            orientation_val = get_exif_orientation(file_path)
 
         # Reverse geocode GPS → place name
         place_city = ""
@@ -489,6 +495,8 @@ def scan_photos_library(library_path: str, output_path: str,
             "place_region": place_region,
             "place_country": place_country,
             "place_country_code": place_country_code,
+            "is_animated": is_animated_val,
+            "orientation": orientation_val,
         }
 
         entries.append(entry_dict)

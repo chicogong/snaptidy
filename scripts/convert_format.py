@@ -41,7 +41,7 @@ from datetime import datetime
 
 from photo_metadata import (
     PILLOW_AVAILABLE, PIEXIF_AVAILABLE, HEIC_SUPPORT, AVIF_SUPPORT,
-    get_image_size,
+    get_image_size, is_animated_image,
 )
 from constants import (
     IMAGE_EXTS, JPEG_EXTS, HEIC_EXTS, AVIF_EXTS,
@@ -297,6 +297,7 @@ def main():
     print(f"\n  Converting {len(files)} files to {args.to.upper()}...")
     success = 0
     failed = []
+    skipped_animated = 0
     total_saved = 0
     report_rows = []
     start_time = time.time()
@@ -312,6 +313,21 @@ def main():
             src_mtime = os.path.getmtime(src_path)
         except OSError:
             src_mtime = None
+
+        # Skip animated images — conversion to WEBP/AVIF loses animation frames
+        if is_animated_image(src_path):
+            skipped_animated += 1
+            report_rows.append({
+                "file_path": src_path,
+                "filename": f["filename"],
+                "src_format": f["extension"],
+                "dst_format": args.to,
+                "src_size": f["size_bytes"],
+                "dst_size": 0,
+                "saved_bytes": 0,
+                "status": "skipped_animated",
+            })
+            continue
 
         result = convert_image(src_path, dst_path, args.to,
                               quality=args.quality, lossless=args.lossless)
@@ -366,6 +382,8 @@ def main():
     # Results
     elapsed = time.time() - start_time
     print(f"\n  ✅ {success} files converted to {args.to.upper()}")
+    if skipped_animated > 0:
+        print(f"  🎬 {skipped_animated} animated files skipped (conversion would lose frames)")
     print(f"  💾 Total space saved: {format_size(total_saved)}")
     print(f"  ⏱  Time: {elapsed:.1f}s ({success/elapsed:.1f} files/s)" if elapsed > 0 else "")
 

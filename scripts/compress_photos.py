@@ -43,7 +43,7 @@ import time
 from pathlib import Path
 
 from constants import IMAGE_EXTS, JPEG_EXTS, HEIC_EXTS, format_size
-from photo_metadata import PILLOW_AVAILABLE
+from photo_metadata import PILLOW_AVAILABLE, is_animated_image
 
 
 # ---------------------------------------------------------------------------
@@ -71,12 +71,20 @@ def should_compress(entry: dict, min_size: int = 512000,
 
     Returns (should_compress: bool, reason: str, target_quality: int).
     """
-    ext = (entry.get("extension") or "").lower()
+    ext = (entry.get("extension") or "").lower().lstrip(".")
     size = entry.get("size_bytes") or 0
 
     # Skip non-image files
     if ext not in IMAGE_EXTS:
         return False, "not_image", 0
+
+    # Skip animated images — compressing GIF/animated WebP loses animation frames
+    if entry.get("is_animated"):
+        return False, "animated", 0
+    # Also check on-disk if DB column is missing or 0 but file might still be animated
+    file_path = entry.get("file_path", "")
+    if file_path and os.path.exists(file_path) and is_animated_image(file_path):
+        return False, "animated_on_disk", 0
 
     # Skip HEIC (already efficient)
     if ext in HEIC_EXTS:

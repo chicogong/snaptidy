@@ -77,6 +77,7 @@ def collect_stats(index_path: str) -> dict:
 
     n_screenshot = n_noexif = n_gps = n_icloud_only = n_blur = n_favorite = 0
     n_icloud_warn = n_icloud_downloaded = n_icloud_failed = 0
+    n_animated = n_rotated = 0
 
     for r in rows:
         d = dict(r)
@@ -121,6 +122,17 @@ def collect_stats(index_path: str) -> dict:
             n_icloud_failed += 1
         if "photos_favorite" in cols and d.get("photos_favorite"):
             n_favorite += 1
+        # Animated images (GIF, animated WebP, APNG)
+        if "is_animated" in cols and d.get("is_animated"):
+            n_animated += 1
+        # Images with non-default EXIF orientation (>1 means rotation needed)
+        if "orientation" in cols:
+            try:
+                orient = int(d.get("orientation") or 1)
+                if orient > 1:
+                    n_rotated += 1
+            except (ValueError, TypeError):
+                pass
         # Possible blur via Apple sharp score
         qv = d.get("photos_quality_vector")
         if qv:
@@ -163,6 +175,8 @@ def collect_stats(index_path: str) -> dict:
         "icloud_failed": n_icloud_failed,
         "possible_blur": n_blur,
         "favorites": n_favorite,
+        "animated": n_animated,
+        "rotated": n_rotated,
     }
     return stats
 
@@ -223,6 +237,8 @@ def print_terminal(stats: dict) -> None:
     if f.get("icloud_failed", 0) > 0:
         print(f"     ❌ iCloud download fail: {f['icloud_failed']:>5}")
     print(f"     🌫️  Possibly blurry  : {f['possible_blur']:>5}")
+    print(f"     🎬 Animated images  : {f['animated']:>5}")
+    print(f"     🔄 Rotated (EXIF)   : {f['rotated']:>5}")
     print(f"     ⭐ Favorites        : {f['favorites']:>5}")
 
     print("\n  📈 Top space consumers")
@@ -261,6 +277,8 @@ def build_html(stats: dict) -> str:
         ("📍", "含 GPS With GPS", f["has_gps"]),
         ("☁️", "仅 iCloud iCloud-only", f["icloud_only"]),
         ("🌫️", "可能模糊 Blurry", f["possible_blur"]),
+        ("🎬", "动图 Animated", f.get("animated", 0)),
+        ("🔄", "旋转照片 Rotated", f.get("rotated", 0)),
         ("⭐", "收藏 Favorites", f["favorites"]),
     ]
     # Add detailed iCloud status if available

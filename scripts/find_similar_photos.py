@@ -80,6 +80,11 @@ def group_by_phash_db(index_path: str, threshold: int = 0, exclude_icloud: bool 
     if exclude_icloud and "icloud_state" in available_cols:
         icloud_filter = " AND icloud_state NOT IN ('icloud_placeholder', 'download_failed')"
 
+    # Skip animated images — pHash is unreliable for multi-frame GIFs/WebP/APNG
+    animated_filter = ""
+    if "is_animated" in available_cols:
+        animated_filter = " AND (is_animated = 0 OR is_animated IS NULL)"
+
     # All-zeros phash (e.g. from tiny/simple images) is meaningless — skip it
     INVALID_PHASH = "0000000000000000"
 
@@ -97,12 +102,14 @@ def group_by_phash_db(index_path: str, threshold: int = 0, exclude_icloud: bool 
             AND phash != ?
             {dim_filter}
             {icloud_filter}
+            {animated_filter}
             AND phash IN (
                 SELECT phash FROM photos
                 WHERE phash != '' AND phash IS NOT NULL
                 AND phash != ?
                 {dim_filter}
                 {icloud_filter}
+                {animated_filter}
                 GROUP BY phash
                 HAVING COUNT(*) > 1
             )
@@ -136,6 +143,7 @@ def group_by_phash_db(index_path: str, threshold: int = 0, exclude_icloud: bool 
             AND phash != ?
             {dim_filter}
             {icloud_filter}
+            {animated_filter}
             ORDER BY phash
         """, (INVALID_PHASH,))
         all_entries = [(row[0], row[1]) for row in cursor]
@@ -402,6 +410,9 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
     icloud_filter = ""
     if exclude_icloud and "icloud_state" in available_cols:
         icloud_filter = " AND icloud_state NOT IN ('icloud_placeholder', 'download_failed')"
+    animated_filter = ""
+    if "is_animated" in available_cols:
+        animated_filter = " AND (is_animated = 0 OR is_animated IS NULL)"
 
     # Load all images with dimensions and phash
     try:
@@ -413,6 +424,7 @@ def detect_scaled_duplicates_db(index_path: str, phash_threshold: int = SCALED_P
             AND width != '' AND height != '' AND width != '0' AND height != '0'
             AND media_type = 'image'
             {icloud_filter}
+            {animated_filter}
         """)
     except sqlite3.OperationalError as e:
         conn.close()
@@ -622,6 +634,9 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
     icloud_filter = ""
     if exclude_icloud and "icloud_state" in available_cols:
         icloud_filter = " AND icloud_state NOT IN ('icloud_placeholder', 'download_failed')"
+    animated_filter = ""
+    if "is_animated" in available_cols:
+        animated_filter = " AND (is_animated = 0 OR is_animated IS NULL)"
 
     # Load all images with dimensions and phash
     try:
@@ -635,6 +650,7 @@ def detect_cross_format_duplicates_db(index_path: str, phash_threshold: int = CR
             AND media_type = 'image'
             AND format_family != ''
             {icloud_filter}
+            {animated_filter}
         """)
     except sqlite3.OperationalError as e:
         conn.close()

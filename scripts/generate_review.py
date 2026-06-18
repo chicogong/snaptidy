@@ -176,6 +176,8 @@ def generate_review_html(index_db: str, duplicates_csv: str = None,
                 "hidden": bool(meta.get("photos_hidden", 0)),
                 "meta_score": _calc_metadata_score(meta),
                 "quality_score": int(meta.get("quality_score") or -1),
+                "is_animated": bool(meta.get("is_animated", 0)),
+                "orientation": int(meta.get("orientation") or 1),
                 "thumb": thumb,
             })
         review_data["duplicate_groups"].append(group)
@@ -204,6 +206,8 @@ def generate_review_html(index_db: str, duplicates_csv: str = None,
                 "hidden": bool(meta.get("photos_hidden", 0)),
                 "meta_score": _calc_metadata_score(meta),
                 "quality_score": int(meta.get("quality_score") or -1),
+                "is_animated": bool(meta.get("is_animated", 0)),
+                "orientation": int(meta.get("orientation") or 1),
                 "thumb": thumb,
             })
         review_data["similar_groups"].append(group)
@@ -229,6 +233,8 @@ def generate_review_html(index_db: str, duplicates_csv: str = None,
             "hidden": bool(item.get("photos_hidden", 0)),
             "meta_score": _calc_metadata_score(item),
             "quality_score": int(item.get("quality_score") or -1),
+            "is_animated": bool(item.get("is_animated", 0)),
+            "orientation": int(item.get("orientation") or 1),
             "thumb": thumb,
             "review_category": item.get("review_category", ""),
         })
@@ -735,6 +741,8 @@ function renderPhotoCard(item, gid, preferredAlbum) {
   const dateStr = item.date ? item.date.substring(0, 19).replace('T', ' ') : '<span style="color:#c7c7cc">无日期</span>';
   const placeStr = item.place ? ` &middot; ${item.place.replace(/</g,'&lt;')}` : '';
   const favStar = item.favorite ? ' <span class="fav-badge">\u2B50</span>' : '';
+  const animatedBadge = item.is_animated ? ' <span style="font-size:11px;color:#FF9500;" title="Animated (GIF/WebP/APNG)">🎬</span>' : '';
+  const rotationBadge = (item.orientation > 1) ? ` <span style="font-size:11px;color:#FF9500;" title="EXIF rotation: ${item.orientation}">🔄</span>` : '';
   const escPath = item.path.replace(/"/g, '&quot;');
   const radioName = `dec-${gid}-${item.path.replace(/[^a-zA-Z0-9]/g,'X')}`;
 
@@ -749,7 +757,7 @@ function renderPhotoCard(item, gid, preferredAlbum) {
                onchange="setDecision(this.dataset.path,'remove')"><span class="opt-remove">删除</span></label>
       </div>
       ${thumb}
-      <div class="fname" title="${escName}">${escName}${favStar}</div>
+      <div class="fname" title="${escName}">${escName}${favStar}${animatedBadge}${rotationBadge}</div>
       <div class="meta">
         ${albumTags(item.albums, preferredAlbum)}<br>
         <strong>${item.width || '?'}x${item.height || '?'}</strong> &middot; ${item.size_str}${placeStr}<br>
