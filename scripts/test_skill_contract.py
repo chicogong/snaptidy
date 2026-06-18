@@ -13,6 +13,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SKILL = ROOT / "SKILL.md"
 
+# Modules in scripts/ that are not standalone CLI tools (shared libraries
+# and test suites).  When adding a new non-CLI module, append it here.
+INTERNAL_MODULES = frozenset({
+    "constants.py",
+    "photo_metadata.py",
+    "icloud_utils.py",
+    "applescript_utils.py",
+    "test_skill_contract.py",
+    "test_v313_integration.py",
+})
+
 
 def read_frontmatter(path: Path) -> tuple[dict[str, str], str]:
     """Return top-level scalar frontmatter fields and Markdown body."""
@@ -96,18 +107,10 @@ class SkillContractTests(unittest.TestCase):
 
     def test_all_cli_scripts_documented(self) -> None:
         """Forward check: every CLI script in scripts/ must appear in SKILL.md."""
-        internal = {
-            "constants.py",
-            "photo_metadata.py",
-            "icloud_utils.py",
-            "applescript_utils.py",
-            "test_skill_contract.py",
-            "test_v313_integration.py",
-        }
         all_scripts = {
             f.name
             for f in (ROOT / "scripts").glob("*.py")
-            if f.name not in internal
+            if f.name not in INTERNAL_MODULES
         }
         documented = set(re.findall(r"([a-z0-9_]+\.py)", self.body))
         missing = all_scripts - documented
@@ -133,18 +136,10 @@ class SkillContractTests(unittest.TestCase):
 
     def test_all_cli_scripts_help(self) -> None:
         """Every CLI script must respond to --help with exit code 0."""
-        internal = {
-            "constants.py",
-            "photo_metadata.py",
-            "icloud_utils.py",
-            "applescript_utils.py",
-            "test_skill_contract.py",
-            "test_v313_integration.py",
-        }
         cli_scripts = sorted(
             f.name
             for f in (ROOT / "scripts").glob("*.py")
-            if f.name not in internal
+            if f.name not in INTERNAL_MODULES
         )
         for script in cli_scripts:
             result = subprocess.run(

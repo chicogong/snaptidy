@@ -66,3 +66,9 @@ Detailed feature tables for all versions. See `SKILL.md` for the concise summary
 | `cluster_events.py` | "event clustering", "照片事件" | Auto-group photos by time + location |
 | `find_similar_videos.py` | "video dedup", "视频去重" | Frame sampling + pHash for video duplicates |
 | `rename_photos.py` | "smart rename", "照片重命名" | Rename by EXIF date/camera/location: `{date}_{camera}_{seq}` |
+
+## v3.7 — Album Organization & Reporting
+
+| Script | Trigger | What it does |
+|--------|---------|-------------|
+| `generate_album_report.py` | "album report", "相册报告" | Self-contained HTML report for Photos.app album organization: summary cards (albums created, photos added, errors), before/after diff table with new/grew/shrank/unchanged badges, album cards with sample thumbnails, category/format distribution bars, dark mode; `--organize-by date/year/category/format/smart`, `--stats` JSON from `organize_photos_albums()`, `--max-thumbnails N` |

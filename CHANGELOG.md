@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.3] - 2026-06-18
+
+### Changed
+
+- **Integration test modernized** — `test_v313_integration.py` converted from
+  raw function-based tests to `unittest.TestCase` with `setUpClass` /
+  `tearDownClass` lifecycle management. Test method names now follow
+  `test_*` convention and produce structured assertion output.
+
+- **Contract test DRY refactor** — `INTERNAL_MODULES` extracted to a
+  module-level `frozenset` constant, eliminating duplication between
+  `test_all_cli_scripts_documented` and `test_all_cli_scripts_help`.
+  Adding a new non-CLI module now requires editing one location.
+
+### Added
+
+- **generate_album_report.py documented** — added to `references/features.md`
+  with trigger words, parameters, and feature summary (before/after diff,
+  album cards with thumbnails, category/format distribution bars, dark mode).
+
+- **CHANGELOG v3.14.0 accuracy note** — clarified that SKILL.md's 91-line
+  reduction was the v3.14.0 state, later expanded to 171 lines in
+  v3.14.1–v3.14.2 as missing scripts were restored.
+
+### Fixed
+
+- **Hardcoded version string** — `generate_album_report.py` footer showed
+  `v3.5.0` (stale from initial release); updated to track current version.
+
 ## [3.14.2] - 2026-06-18
 
 ### Fixed
@@ -119,7 +148,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **SKILL.md drastically simplified** — reduced from 436 lines to 91 lines.
+- **SKILL.md drastically simplified** — reduced from 436 lines to 91 lines
+  (later expanded to 171 lines in v3.14.1–v3.14.2 as missing scripts were
+  restored to the routing table).
   Detailed feature tables moved to `references/features.md`. Description
   shortened from 1500+ chars to 3 sentences. Version updated to 3.14.0.
 
