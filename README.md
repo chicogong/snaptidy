@@ -6,8 +6,9 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.13-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
-[![Website](https://img.shields.io/badge/Website-snaptidy.app-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
+[![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/Version-3.13.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > AI-powered photo & video organizer for macOS. Deduplicate photos, find similar images via perceptual hashing (pHash) and Apple ML vectors, fix EXIF metadata, and restructure your library — safely, through natural-language conversation. Zero-risk, read-only scan with human-approved actions. Open source, MIT licensed.
 
@@ -87,7 +88,10 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | 📊 **Enhanced Library Health** | `library_stats.py` now shows detailed iCloud status: placeholder count, downloaded count, failed downloads — in terminal and HTML reports |
 | 📦 **Shared iCloud Module** | `icloud_utils.py` — consolidated `check_icloud_status()`, `download_icloud_file()`, `is_likely_thumbnail()`, `batch_download()` into a single reusable module |
 
-## What's New in v3.11
+<details>
+<summary>Older versions (v3.8 – v3.11)</summary>
+
+### v3.11
 
 | Feature | Description |
 |---------|-------------|
@@ -98,7 +102,7 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | 🗜️ **Photo Compression** | `compress_photos.py` — Smart JPEG quality by resolution tier; PNG→JPEG conversion; dry-run preview; backup safety |
 | 📅 **Timeline Gap Detection** | `timeline_gaps.py` — Find abnormal date gaps indicating missing photos; adaptive threshold; severity classification |
 
-## What's New in v3.10
+### v3.10
 
 | Feature | Description |
 |---------|-------------|
@@ -109,7 +113,7 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | 💡 **Space What-If** | `library_stats.py --what-if` — "How much space would I save if I delete all screenshots/duplicates/RAW?" |
 | 📋 **Event Album Creation** | `organize_photos.py --create-event-albums` — Auto-create Photos.app albums from event clustering results |
 
-## What's New in v3.9
+### v3.9
 
 | Feature | Description |
 |---------|-------------|
@@ -124,7 +128,7 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | 🎬 **Video Dedup** | `find_similar_videos.py` — Frame sampling + pHash for duplicate/similar video detection |
 | ✏️ **Smart Rename** | `rename_photos.py` — Rename by EXIF date/camera/location: `2025-06-15_Beijing_iPhone15_001.jpg` |
 
-## What's New in v3.8
+### v3.8
 
 | Feature | Description |
 |---------|-------------|
@@ -134,6 +138,8 @@ The key difference? **Safety first, zero risk.** SnapTidy never deletes anything
 | 📊 **Location Stats** | `library_stats.py` now shows top cities by photo count in terminal & HTML reports |
 | 📋 **Interactive Review** | `generate_review.py` — HTML review page with smart strategy rules (metadata/oldest/newest/resolution/preferred album), album display, favorites protection |
 | 🔍 **Privacy Risk Detection** | `detect_privacy_risks.py` — find sensitive documents (ID cards, bank cards, passports, passwords) via filename/folder/category/dimension heuristics |
+
+</details>
 
 <details>
 <summary>v3.7</summary>
@@ -311,10 +317,10 @@ python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_in
 # Step 1b: Scan without geocoding (faster, no place names)
 python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db --no-geocode
 
-# Step 1b: Quick scan (zero-install, no deps needed)
+# Step 1c: Quick scan (zero-install, no deps needed)
 python3 scripts/quick_scan.py --source /path/to/your/photos --output ./photo_index.db --dedup
 
-# Step 1c (Optional): Library health & insights (read-only)
+# Step 1d (Optional): Library health & insights (read-only)
 python3 scripts/library_stats.py --index ./photo_index.db
 python3 scripts/library_stats.py -i ./photo_index.db --report ./health.html
 
@@ -339,6 +345,7 @@ python3 scripts/generate_move_plan.py \
     --prefer-folder "DCIM" --strategy quality
 
 # Step 5: Preview with HTML thumbnails (optional but recommended)
+# Use duplicates_exact.csv from Step 2 or duplicates_similar.csv from Step 3
 python3 scripts/generate_preview.py \
     --duplicates ./duplicates_similar.csv \
     --index ./photo_index.db \

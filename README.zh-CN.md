@@ -6,8 +6,9 @@
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue.svg?style=flat-square)](https://www.python.org/downloads/)
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
-[![Version](https://img.shields.io/badge/Version-3.13-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
-[![Website](https://img.shields.io/badge/Website-snaptidy.app-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
+[![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/Version-3.13.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > macOS 照片视频整理去重工具。通过感知哈希 (pHash)、Apple ML 特征向量和 SHA-256 检测重复照片，支持跨格式去重（HEIC↔JPEG）、EXIF 修复、GPS 逆地理编码。AI 对话驱动，只读扫描，人工确认后操作，零风险。开源免费 (MIT)。
 
@@ -86,7 +87,10 @@
 | 📊 **增强库健康报告** | `library_stats.py` 新增 iCloud 详细状态：占位文件数、已下载数、下载失败数 — 终端和 HTML 报告均显示 |
 | 📦 **共享 iCloud 模块** | `icloud_utils.py` — 整合 `check_icloud_status()`、`download_icloud_file()`、`is_likely_thumbnail()`、`batch_download()` 为单一可复用模块 |
 
-## v3.11 新功能
+<details>
+<summary>旧版本 (v3.8 – v3.11)</summary>
+
+### v3.11
 
 | 功能 | 说明 |
 |------|------|
@@ -97,7 +101,7 @@
 | 🗜️ **照片压缩** | `compress_photos.py` — 按分辨率分层智能 JPEG 压缩；PNG→JPEG 转换；预览模式；安全备份 |
 | 📅 **时间线空白检测** | `timeline_gaps.py` — 检测异常日期空白（可能丢失照片）；自适应阈值；严重程度分类 |
 
-## v3.10 新功能
+### v3.10
 
 | 功能 | 说明 |
 |------|------|
@@ -108,7 +112,7 @@
 | 💡 **空间假设分析** | `library_stats.py --what-if` — "如果删除所有截图/重复/RAW/低质量文件能省多少空间？" |
 | 📋 **事件相册创建** | `organize_photos.py --create-event-albums` — 从事件聚类结果自动创建 Photos.app 相册 |
 
-## v3.9 新功能
+### v3.9
 
 | 功能 | 说明 |
 |------|------|
@@ -123,7 +127,7 @@
 | 🎬 **视频去重** | `find_similar_videos.py` — 视频帧采样 + 感知哈希检测重复视频 |
 | ✏️ **智能重命名** | `rename_photos.py` — 按 EXIF 日期/相机/地点重命名 |
 
-## v3.8 新功能
+### v3.8
 
 | 功能 | 说明 |
 |------|------|
@@ -133,6 +137,8 @@
 | 📊 **地点统计** | `library_stats.py` 现在显示按城市统计的照片数量（终端 + HTML 报告） |
 | 📋 **交互式审核** | `generate_review.py` — HTML 审核页面，智能策略规则（元数据/最早/最新/分辨率/偏好相册），相册展示，收藏保护 |
 | 🔍 **隐私风险检测** | `detect_privacy_risks.py` — 查找敏感文档（身份证、银行卡、护照、密码）基于文件名/文件夹/分类/尺寸启发式 |
+
+</details>
 
 <details>
 <summary>v3.7</summary>
@@ -298,10 +304,10 @@ python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_in
 # 第 1b 步：不进行逆地理编码的扫描（更快，无地名数据）
 python3 scripts/scan_photos.py --source /path/to/your/photos --output ./photo_index.db --no-geocode
 
-# 第 1b 步：快速扫描（零安装，无需任何依赖）
+# 第 1c 步：快速扫描（零安装，无需任何依赖）
 python3 scripts/quick_scan.py --source /path/to/your/photos --output ./photo_index.db --dedup
 
-# 第 1c 步（可选）：照片库健康与洞察（只读）
+# 第 1d 步（可选）：照片库健康与洞察（只读）
 python3 scripts/library_stats.py --index ./photo_index.db
 python3 scripts/library_stats.py -i ./photo_index.db --report ./health.html
 
@@ -326,6 +332,7 @@ python3 scripts/generate_move_plan.py \
     --prefer-folder "DCIM" --strategy quality
 
 # 第 5 步：HTML 缩略图预览（可选但推荐）
+# 可使用第 2 步的 duplicates_exact.csv 或第 3 步的 duplicates_similar.csv
 python3 scripts/generate_preview.py \
     --duplicates ./duplicates_similar.csv \
     --index ./photo_index.db \

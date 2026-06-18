@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  syntax-check:
+    name: Syntax Check (py_compile)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile all scripts
+        run: |
+          echo "Checking $(ls scripts/*.py | wc -l | tr -d ' ') Python scripts..."
+          python -m py_compile scripts/*.py && echo "All scripts passed syntax check"
+
+  integration-test:
+    name: Integration Tests
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install optional dependencies
+        run: pip install Pillow piexif imagehash pillow-heif
+
+      - name: Run v3.13 integration tests
+        run: python scripts/test_v313_integration.py

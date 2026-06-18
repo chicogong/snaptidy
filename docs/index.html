@@ -504,7 +504,7 @@ python3 scripts/find_exact_duplicates.py --index ./photo_index.db --output ./dup
 python3 scripts/find_similar_photos.py --index ./photo_index.db --output ./similar.csv
 
 # Generate a move plan
-python3 scripts/generate_move_plan.py --duplicates ./duplicates.csv --index ./photo_index.db --plan ./move_plan.csv
+python3 scripts/generate_move_plan.py --duplicates ./duplicates.csv --index ./photo_index.db --plan ./move_plan.csv --target-root /path/to/your/photos
 
 # Review and apply (move to Trash, recoverable via Finder)
 python3 scripts/apply_move_plan.py --plan ./move_plan.csv --mode trash</code></pre>
