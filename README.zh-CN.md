@@ -7,11 +7,35 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![Version](https://img.shields.io/badge/Version-3.13-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Website](https://img.shields.io/badge/Website-snaptidy.app-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
-> macOS 照片视频整理去重工具。通过 AI 对话，安全地整理、去重和重构你的照片库。
+> macOS 照片视频整理去重工具。通过感知哈希 (pHash)、Apple ML 特征向量和 SHA-256 检测重复照片，支持跨格式去重（HEIC↔JPEG）、EXIF 修复、GPS 逆地理编码。AI 对话驱动，只读扫描，人工确认后操作，零风险。开源免费 (MIT)。
+
+## SnapTidy 功能对比
+
+| 功能 | SnapTidy | 商业软件 | 基础 CLI 工具 |
+|------|----------|---------|--------------|
+| AI 对话驱动 | ✓ | ✗ | ✗ |
+| 零安装核心（仅标准库） | ✓ | ✗ | ~ |
+| 感知哈希 (pHash) 相似检测 | ✓ | ~ | ~ |
+| Apple ML 特征向量检测 | ✓ | ✗ | ✗ |
+| 跨格式去重（HEIC ↔ JPEG） | ✓ | ~ | ✗ |
+| 缩放去重（不同分辨率同一照片） | ✓ | ✗ | ✗ |
+| 连拍检测（SubSecTime） | ✓ | ✗ | ✗ |
+| EXIF 元数据提取与编辑 | ✓ | ~ | ✗ |
+| GPS 逆地理编码 | ✓ | ✗ | ✗ |
+| 隐私风险检测（身份证/护照/银行卡） | ✓ | ✗ | ✗ |
+| iCloud 占位文件处理 | ✓ | ✗ | ✗ |
+| 视频去重 | ✓ | ~ | ✗ |
+| Live Photo 保护 | ✓ | ~ | ✗ |
+| Google Takeout 导入 | ✓ | ✗ | ✗ |
+| 质量评估（模糊/亮度/对比度） | ✓ | ~ | ✗ |
+| macOS 废纸篓恢复 | ✓ | ~ | ✗ |
+| 免费开源 | ✓ | ✗ | ~ |
 
 ## 目录
 
+- [SnapTidy 功能对比](#snaptidy-功能对比)
 - [为什么选择 SnapTidy？](#为什么选择-snaptidy)
 - [新功能](#v313-新功能)
 - [核心特性](#核心特性)
@@ -562,6 +586,12 @@ python3 scripts/edit_exif.py set-tags --tags "vacation,beach,summer" --paths pho
 ## 更新日志
 
 详见 [CHANGELOG.md](CHANGELOG.md)。
+
+## Star History
+
+<a href="https://star-history.com/#chicogong/snaptidy&Date">
+  <img src="https://star-history.com/#chicogong/snaptidy&Date" alt="Star History Chart" width="600">
+</a>
 
 ## 许可证
 
