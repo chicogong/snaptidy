@@ -7,7 +7,7 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/Version-3.13.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.14.0-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 [![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > AI-powered photo & video organizer for macOS. Deduplicate photos, find similar images via perceptual hashing (pHash) and Apple ML vectors, fix EXIF metadata, and restructure your library — safely, through natural-language conversation. Zero-risk, read-only scan with human-approved actions. Open source, MIT licensed.
@@ -66,6 +66,15 @@ Your photo library grows fast — iPhone shots, iCloud exports, Android transfer
 **iPhone users**: You don't need iCloud sync to organize your photos. Connect your iPhone via USB and SnapTidy can scan the Photos.app library directly, or use Finder to sync photos to a local folder first. Tools like [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) also allow direct USB access to your iPhone's DCIM without iCloud.
 
 The key difference? **Safety first, zero risk.** SnapTidy never deletes anything. It scans read-only, produces a human-readable plan, and only moves files after you explicitly approve — optionally to macOS Trash (recoverable via Finder).
+
+## What's New in v3.14
+
+| Feature | Description |
+|---------|-------------|
+| 🔍 **Bad Extension Detection** | `detect_bad_extensions.py` — detect files whose magic bytes don't match their extension (e.g., JPEG content with `.png`); 20+ format signatures; `--parallel`, `--incremental`, `--report` |
+| 📊 **7-Dimension Quality Scoring** | `assess_quality.py` enhanced from 3 to 7 dimensions: sharpness, exposure, contrast, resolution, format quality, file size efficiency, EXIF completeness; weighted composite score for smarter dedup decisions |
+| 📝 **SKILL.md Simplified** | Reduced from 436 → 91 lines; detailed feature tables moved to `references/features.md`; description shortened to 3 sentences |
+| 🔧 **CI Workflow** | `.github/workflows/ci.yml` — automated syntax checking (42 scripts) + integration tests on every PR/push |
 
 ## What's New in v3.13
 

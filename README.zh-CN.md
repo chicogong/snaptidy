@@ -7,7 +7,7 @@
 [![macOS](https://img.shields.io/badge/Platform-macOS-black.svg?style=flat-square)](https://www.apple.com/macos)
 [![AI Skill](https://img.shields.io/badge/AI-Skill-purple.svg?style=flat-square)](https://github.com/topics/ai-skill)
 [![CI](https://img.shields.io/github/actions/workflow/status/chicogong/snaptidy/ci.yml?branch=main&label=CI&style=flat-square)](https://github.com/chicogong/snaptidy/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/Version-3.13.1-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
+[![Version](https://img.shields.io/badge/Version-3.14.0-green.svg?style=flat-square)](https://github.com/chicogong/snaptidy)
 [![Website](https://img.shields.io/badge/Website-realtime--ai.chat-blue.svg?style=flat-square)](https://realtime-ai.chat/snaptidy/)
 
 > macOS 照片视频整理去重工具。通过感知哈希 (pHash)、Apple ML 特征向量和 SHA-256 检测重复照片，支持跨格式去重（HEIC↔JPEG）、EXIF 修复、GPS 逆地理编码。AI 对话驱动，只读扫描，人工确认后操作，零风险。开源免费 (MIT)。
@@ -65,6 +65,15 @@
 **iPhone 用户**：整理照片不需要 iCloud 同步到电脑。通过 USB 连接 iPhone，SnapTidy 可以直接扫描 Photos.app 图库，或者先用 Finder 将照片同步到本地文件夹。使用 [pymobiledevice3](https://github.com/doronz88/pymobiledevice3) 等工具还可以直接通过 USB 访问 iPhone 的 DCIM 目录，无需 iCloud。
 
 核心区别？**安全第一，零风险。** SnapTidy 永不删除任何东西。它以只读方式扫描，生成人类可读的计划，仅在明确批准后移动文件 — 可选移至 macOS 废纸篓（通过 Finder 恢复）。
+
+## v3.14 新功能
+
+| 功能 | 说明 |
+|---------|-------------|
+| 🔍 **扩展名校验** | `detect_bad_extensions.py` — 检测文件内容（magic bytes）与扩展名不匹配的文件（如 JPEG 内容用 `.png` 扩展名）；支持 20+ 种格式签名；`--parallel`、`--incremental`、`--report` |
+| 📊 **7 维质量评分** | `assess_quality.py` 从 3 维升级到 7 维：锐度、曝光、对比度、分辨率、格式质量、文件大小效率、EXIF 完整度；加权综合评分让去重决策更智能 |
+| 📝 **SKILL.md 精简** | 从 436 行精简到 91 行；详细功能表移至 `references/features.md`；描述缩短为 3 句话 |
+| 🔧 **CI 持续集成** | `.github/workflows/ci.yml` — 每次 PR/push 自动检查 42 个脚本语法 + 集成测试 |
 
 ## v3.13 新功能
 

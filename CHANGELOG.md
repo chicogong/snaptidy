@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0] - 2026-06-18
+
+### Added
+
+- **Bad extension detection** — new `detect_bad_extensions.py` script:
+  Reads file magic bytes and compares against declared extension. Detects
+  files whose content doesn't match their extension (e.g., JPEG content
+  with `.png` extension). Supports 20+ format signatures including JPEG,
+  PNG, GIF, BMP, TIFF, WebP, HEIC/HEIF, AVIF, MP4/MOV, MKV, WMV, FLV,
+  and RAW formats (CR2, ORF, RW2, RAF). Adds `bad_extension`,
+  `actual_format`, `declared_format` DB columns. Parallel processing
+  and incremental mode supported.
+
+- **Multi-dimensional quality scoring** — `assess_quality.py` enhanced
+  from 3 dimensions (blur/brightness/contrast) to 7 dimensions:
+  1. Sharpness (Laplacian variance, 0-100)
+  2. Exposure (brightness mapping, 0-100)
+  3. Contrast (pixel intensity stddev, 0-100)
+  4. Resolution (megapixel mapping, 0-100)
+  5. Format quality (RAW > HEIC > AVIF > JPEG > PNG > BMP, 0-100)
+  6. File size efficiency (bytes-per-pixel analysis, 0-100)
+  7. EXIF completeness (date + GPS + camera presence, 0-100)
+  Composite `quality_score` uses weighted formula across all 7 dimensions.
+  New DB columns: `sharpness_score`, `exposure_score`, `contrast_score`,
+  `resolution_score`, `format_score`, `filesize_score`, `exif_score`.
+
+### Changed
+
+- **SKILL.md drastically simplified** — reduced from 436 lines to 91 lines.
+  Detailed feature tables moved to `references/features.md`. Description
+  shortened from 1500+ chars to 3 sentences. Version fixed to 3.13.1.
+
+- **README badges and step numbering** — version badge 3.13 → 3.13.1,
+  website badge text snaptidy.app → realtime-ai.chat, duplicate Step 1b
+  labels fixed to 1b/1c/1d, landing page Quick Start command fixed.
+
+- **CI workflow added** — `.github/workflows/ci.yml` with py_compile on
+  all 42 scripts and v3.13 integration tests on every PR/push to main.
+
+- **Older changelogs collapsed** — v3.8-v3.11 What's New sections wrapped
+  in `<details>` tags in both READMEs for readability.
+
 ## [3.13.1] - 2026-06-17
 
 ### Fixed

@@ -62,7 +62,10 @@ Geocode:
   reverse_geocode.py        — GPS → place names (CoreLocation/Locationator/Nominatim + persistent cache)
 
 Quality:
-  assess_quality.py          — Blur/brightness/contrast/quality score (Laplacian + pixel stats)
+  assess_quality.py          — 7-dimension quality scoring (sharpness/exposure/contrast/resolution/format/filesize/EXIF)
+
+Bad Extension:
+  detect_bad_extensions.py   — Detect files whose magic bytes don't match their extension
 
 EXIF Edit:
   edit_exif.py              — Strip GPS / set dates / write tags (backup/restore safety)

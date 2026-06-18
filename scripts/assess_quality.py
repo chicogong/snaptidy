@@ -151,71 +151,72 @@ def compute_contrast(img) -> float:
 
 
 def compute_quality_score(blur: float, brightness: float, contrast: float,
-                          width: int = 0, height: int = 0) -> int:
-    """Compute composite quality score (0-100).
+                          width: int = 0, height: int = 0,
+                          fmt_family: str = "", file_size: int = 0,
+                          has_exif_date: bool = False, has_gps: bool = False,
+                          has_camera: bool = False) -> int:
+    """Compute composite quality score (0-100) using multi-dimensional scoring.
 
-    Components:
-      40% — Sharpness (blur score mapped to 0-40)
-      25% — Exposure quality (brightness mapped to 0-25, penalize too dark/bright)
-      20% — Contrast (contrast mapped to 0-20)
+    Components (7 dimensions):
+      25% — Sharpness (blur score mapped to 0-25)
+      15% — Exposure quality (brightness mapped to 0-15)
+      10% — Contrast (contrast mapped to 0-10)
       15% — Resolution (pixel count mapped to 0-15)
+      10% — Format quality (RAW > HEIC > JPEG > PNG > BMP)
+      10% — File size efficiency (bytes per pixel, detects over/under-compressed)
+      15% — EXIF completeness (date + GPS + camera presence)
 
     Returns integer 0-100.
     """
     score = 0.0
 
-    # Sharpness component (0-40)
-    # Map blur: <30 → 5, 30-80 → 15, 80-200 → 30, >200 → 40
+    # 1. Sharpness component (0-25)
     if blur >= 0:
         if blur < 30:
-            sharp = 5 + (blur / 30) * 10
+            sharp = 3 + (blur / 30) * 7
         elif blur < 80:
-            sharp = 15 + ((blur - 30) / 50) * 15
+            sharp = 10 + ((blur - 30) / 50) * 8
         elif blur < 200:
-            sharp = 30 + ((blur - 80) / 120) * 8
+            sharp = 18 + ((blur - 80) / 120) * 5
         else:
-            sharp = 38 + min((blur - 200) / 500, 1) * 2
-        score += min(sharp, 40)
+            sharp = 23 + min((blur - 200) / 500, 1) * 2
+        score += min(sharp, 25)
     else:
-        score += 20  # Unknown, give average
+        score += 12  # Unknown, give average
 
-    # Exposure component (0-25)
-    # Optimal brightness: 80-140 (well-exposed)
-    # Penalize: <60 (too dark), >200 (too bright/clipped)
+    # 2. Exposure component (0-15)
     if brightness >= 0:
         if 80 <= brightness <= 140:
-            exposure = 25
+            exposure = 15
         elif 60 <= brightness < 80:
-            exposure = 15 + ((brightness - 60) / 20) * 10
+            exposure = 9 + ((brightness - 60) / 20) * 6
         elif 140 < brightness <= 180:
-            exposure = 25 - ((brightness - 140) / 40) * 10
+            exposure = 15 - ((brightness - 140) / 40) * 6
         elif brightness < 60:
-            exposure = max(0, (brightness / 60) * 15)
-        else:  # > 180
-            exposure = max(0, 15 - ((brightness - 180) / 75) * 15)
-        score += min(exposure, 25)
+            exposure = max(0, (brightness / 60) * 9)
+        else:
+            exposure = max(0, 9 - ((brightness - 180) / 75) * 9)
+        score += min(exposure, 15)
     else:
-        score += 12  # Unknown
+        score += 7
 
-    # Contrast component (0-20)
-    # Optimal: 40-80 (good contrast), <25 (flat), >90 (harsh)
+    # 3. Contrast component (0-10)
     if contrast >= 0:
         if 40 <= contrast <= 80:
-            cont = 20
+            cont = 10
         elif 25 <= contrast < 40:
-            cont = 12 + ((contrast - 25) / 15) * 8
+            cont = 6 + ((contrast - 25) / 15) * 4
         elif 80 < contrast <= 100:
-            cont = 20 - ((contrast - 80) / 20) * 5
+            cont = 10 - ((contrast - 80) / 20) * 3
         elif contrast < 25:
-            cont = max(0, (contrast / 25) * 12)
-        else:  # > 100
-            cont = max(0, 15 - ((contrast - 100) / 28) * 15)
-        score += min(cont, 20)
+            cont = max(0, (contrast / 25) * 6)
+        else:
+            cont = max(0, 7 - ((contrast - 100) / 28) * 7)
+        score += min(cont, 10)
     else:
-        score += 10  # Unknown
+        score += 5
 
-    # Resolution component (0-15)
-    # Map pixel count: <1MP → 3, 1-8MP → 6, 8-20MP → 10, >20MP → 15
+    # 4. Resolution component (0-15)
     pixels = width * height
     if pixels > 0:
         mp = pixels / 1_000_000
@@ -229,7 +230,53 @@ def compute_quality_score(blur: float, brightness: float, contrast: float,
             res = 14 + min((mp - 20) / 30, 1) * 1
         score += min(res, 15)
     else:
-        score += 7  # Unknown
+        score += 7
+
+    # 5. Format quality component (0-10)
+    # RAW > HEIC > AVIF > JPEG > TIFF > WebP > PNG > BMP > Other
+    format_scores = {
+        "raw": 10, "heic": 9, "avif": 8, "jpeg": 7,
+        "tiff": 6, "webp": 5, "png": 4, "bmp": 2,
+        "gif": 3, "ico": 1,
+    }
+    fmt_lower = (fmt_family or "").lower()
+    score += format_scores.get(fmt_lower, 3)
+
+    # 6. File size efficiency component (0-10)
+    # Bytes per pixel: ideal range detects well-compressed but not over-compressed
+    if pixels > 0 and file_size > 0:
+        bpp = file_size / pixels  # bytes per pixel
+        if bpp < 0.1:
+            # Very low — possibly over-compressed or tiny
+            fs = 4
+        elif bpp < 0.5:
+            # Good compression (HEIC, AVIF range)
+            fs = 10
+        elif bpp < 2.0:
+            # Normal JPEG range
+            fs = 8
+        elif bpp < 5.0:
+            # Uncompressed-ish (PNG, BMP)
+            fs = 6
+        elif bpp < 15.0:
+            # RAW territory
+            fs = 7
+        else:
+            # Very large — possibly uncompressed TIFF or problematic
+            fs = 4
+        score += fs
+    else:
+        score += 5
+
+    # 7. EXIF completeness component (0-15)
+    exif_score = 0
+    if has_exif_date:
+        exif_score += 6  # Date is most important
+    if has_gps:
+        exif_score += 4  # GPS is valuable
+    if has_camera:
+        exif_score += 5  # Camera info is useful
+    score += exif_score
 
     return max(0, min(100, int(round(score))))
 
@@ -243,6 +290,13 @@ QUALITY_COLUMNS = [
     ("brightness", "REAL DEFAULT -1"),
     ("contrast", "REAL DEFAULT -1"),
     ("quality_score", "INTEGER DEFAULT -1"),
+    ("sharpness_score", "INTEGER DEFAULT -1"),
+    ("exposure_score", "INTEGER DEFAULT -1"),
+    ("contrast_score", "INTEGER DEFAULT -1"),
+    ("resolution_score", "INTEGER DEFAULT -1"),
+    ("format_score", "INTEGER DEFAULT -1"),
+    ("filesize_score", "INTEGER DEFAULT -1"),
+    ("exif_score", "INTEGER DEFAULT -1"),
 ]
 
 
@@ -267,7 +321,122 @@ def migrate_db(conn: sqlite3.Connection) -> None:
 # Single-file quality assessment (callable from thread pool)
 # ---------------------------------------------------------------------------
 
-def _assess_one(file_path: str, ext: str, width: int, height: int) -> dict | None:
+def _compute_dimension_scores(blur, brightness, contrast, width, height,
+                               fmt_family, file_size, has_exif_date, has_gps, has_camera):
+    """Compute individual dimension scores (0-100 each)."""
+    # Sharpness dimension (0-100)
+    if blur >= 0:
+        if blur < 30:
+            sharp = 15 + (blur / 30) * 35
+        elif blur < 80:
+            sharp = 50 + ((blur - 30) / 50) * 30
+        elif blur < 200:
+            sharp = 80 + ((blur - 80) / 120) * 15
+        else:
+            sharp = 95 + min((blur - 200) / 500, 1) * 5
+        sharpness = min(100, int(round(sharp)))
+    else:
+        sharpness = 50
+
+    # Exposure dimension (0-100)
+    if brightness >= 0:
+        if 80 <= brightness <= 140:
+            exposure = 100
+        elif 60 <= brightness < 80:
+            exposure = 60 + ((brightness - 60) / 20) * 40
+        elif 140 < brightness <= 180:
+            exposure = 100 - ((brightness - 140) / 40) * 30
+        elif brightness < 60:
+            exposure = max(0, (brightness / 60) * 60)
+        else:
+            exposure = max(0, 60 - ((brightness - 180) / 75) * 60)
+        exposure = min(100, int(round(exposure)))
+    else:
+        exposure = 50
+
+    # Contrast dimension (0-100)
+    if contrast >= 0:
+        if 40 <= contrast <= 80:
+            cont = 100
+        elif 25 <= contrast < 40:
+            cont = 60 + ((contrast - 25) / 15) * 40
+        elif 80 < contrast <= 100:
+            cont = 100 - ((contrast - 80) / 20) * 30
+        elif contrast < 25:
+            cont = max(0, (contrast / 25) * 60)
+        else:
+            cont = max(0, 70 - ((contrast - 100) / 28) * 70)
+        contrast_dim = min(100, int(round(cont)))
+    else:
+        contrast_dim = 50
+
+    # Resolution dimension (0-100)
+    pixels = width * height
+    if pixels > 0:
+        mp = pixels / 1_000_000
+        if mp < 1:
+            res = 20
+        elif mp < 8:
+            res = 40 + ((mp - 1) / 7) * 30
+        elif mp < 20:
+            res = 70 + ((mp - 8) / 12) * 25
+        else:
+            res = 95 + min((mp - 20) / 30, 1) * 5
+        resolution = min(100, int(round(res)))
+    else:
+        resolution = 50
+
+    # Format dimension (0-100)
+    format_map = {
+        "raw": 100, "heic": 90, "avif": 85, "jpeg": 75,
+        "tiff": 70, "webp": 60, "png": 50, "bmp": 25,
+        "gif": 35, "ico": 10,
+    }
+    format_dim = format_map.get((fmt_family or "").lower(), 30)
+
+    # File size efficiency dimension (0-100)
+    if pixels > 0 and file_size > 0:
+        bpp = file_size / pixels
+        if bpp < 0.1:
+            fs = 40
+        elif bpp < 0.5:
+            fs = 100
+        elif bpp < 2.0:
+            fs = 80
+        elif bpp < 5.0:
+            fs = 60
+        elif bpp < 15.0:
+            fs = 70
+        else:
+            fs = 40
+        filesize = fs
+    else:
+        filesize = 50
+
+    # EXIF completeness dimension (0-100)
+    exif_dim = 0
+    if has_exif_date:
+        exif_dim += 40
+    if has_gps:
+        exif_dim += 25
+    if has_camera:
+        exif_dim += 35
+
+    return {
+        "sharpness_score": sharpness,
+        "exposure_score": exposure,
+        "contrast_score": contrast_dim,
+        "resolution_score": resolution,
+        "format_score": format_dim,
+        "filesize_score": filesize,
+        "exif_score": exif_dim,
+    }
+
+
+def _assess_one(file_path: str, ext: str, width: int, height: int,
+                fmt_family: str = "", file_size: int = 0,
+                has_exif_date: bool = False, has_gps: bool = False,
+                has_camera: bool = False) -> dict | None:
     """Assess quality for a single image. Returns result dict or None on error."""
     from PIL import Image
 
@@ -290,7 +459,18 @@ def _assess_one(file_path: str, ext: str, width: int, height: int) -> dict | Non
             blur = compute_blur_score(img)
             brightness = compute_brightness(img)
             contrast = compute_contrast(img)
-            quality = compute_quality_score(blur, brightness, contrast, width, height)
+
+            # Compute individual dimension scores
+            dims = _compute_dimension_scores(
+                blur, brightness, contrast, width, height,
+                fmt_family, file_size, has_exif_date, has_gps, has_camera
+            )
+
+            # Compute composite quality score using weighted formula
+            quality = compute_quality_score(
+                blur, brightness, contrast, width, height,
+                fmt_family, file_size, has_exif_date, has_gps, has_camera
+            )
 
         return {
             "file_path": file_path,
@@ -298,6 +478,7 @@ def _assess_one(file_path: str, ext: str, width: int, height: int) -> dict | Non
             "brightness": brightness,
             "contrast": contrast,
             "quality_score": quality,
+            **dims,
         }
     except Exception:
         return None
@@ -330,9 +511,10 @@ def assess_quality(index_path: str, incremental: bool = False,
     conn.row_factory = sqlite3.Row
     migrate_db(conn)
 
-    # Build query
+    # Build query — fetch columns needed for multi-dimensional scoring
     query = """
-        SELECT file_path, filename, extension, width, height, category
+        SELECT file_path, filename, extension, width, height, category,
+               size_bytes, exif_datetime, gps_latitude, camera_make
         FROM photos
         WHERE media_type = 'image'
     """
@@ -373,17 +555,34 @@ def assess_quality(index_path: str, incremental: bool = False,
             except (ValueError, TypeError):
                 pass
 
-            result = _assess_one(file_path, ext, width, height)
+            # Gather data for multi-dimensional scoring
+            from constants import get_format_family
+            fmt_family = get_format_family(ext)
+            file_size = int(row["size_bytes"] or 0) if "size_bytes" in row.keys() else 0
+            has_exif_date = bool(row["exif_datetime"]) if "exif_datetime" in row.keys() else False
+            has_gps = bool(row["gps_latitude"]) if "gps_latitude" in row.keys() else False
+            has_camera = bool(row["camera_make"]) if "camera_make" in row.keys() else False
+
+            result = _assess_one(file_path, ext, width, height,
+                                 fmt_family, file_size,
+                                 has_exif_date, has_gps, has_camera)
             if result is None:
                 if ext in IMAGE_EXTS:
                     errors += 1
                 continue
 
             conn.execute(
-                "UPDATE photos SET blur_score = ?, brightness = ?, contrast = ?, quality_score = ? "
+                "UPDATE photos SET blur_score = ?, brightness = ?, contrast = ?, "
+                "quality_score = ?, sharpness_score = ?, exposure_score = ?, "
+                "contrast_score = ?, resolution_score = ?, format_score = ?, "
+                "filesize_score = ?, exif_score = ? "
                 "WHERE file_path = ?",
                 (result["blur_score"], result["brightness"],
-                 result["contrast"], result["quality_score"], file_path),
+                 result["contrast"], result["quality_score"],
+                 result["sharpness_score"], result["exposure_score"],
+                 result["contrast_score"], result["resolution_score"],
+                 result["format_score"], result["filesize_score"],
+                 result["exif_score"], file_path),
             )
             conn.commit()
             assessed += 1
@@ -400,9 +599,17 @@ def assess_quality(index_path: str, incremental: bool = False,
                     "brightness": round(result["brightness"], 2) if result["brightness"] >= 0 else "",
                     "contrast": round(result["contrast"], 2) if result["contrast"] >= 0 else "",
                     "quality_score": result["quality_score"],
+                    "sharpness": result["sharpness_score"],
+                    "exposure": result["exposure_score"],
+                    "contrast_dim": result["contrast_score"],
+                    "resolution": result["resolution_score"],
+                    "format": result["format_score"],
+                    "filesize": result["filesize_score"],
+                    "exif": result["exif_score"],
                 })
     else:
         # Parallel mode — compute in threads, batch-write to DB
+        from constants import get_format_family
         tasks = []
         for row in rows:
             ext = (row["extension"] or "").lower()
@@ -416,32 +623,47 @@ def assess_quality(index_path: str, incremental: bool = False,
                 height = int(row["height"] or 0)
             except (ValueError, TypeError):
                 pass
-            tasks.append((file_path, ext, width, height, row))
+
+            fmt_family = get_format_family(ext)
+            file_size = int(row["size_bytes"] or 0) if "size_bytes" in row.keys() else 0
+            has_exif_date = bool(row["exif_datetime"]) if "exif_datetime" in row.keys() else False
+            has_gps = bool(row["gps_latitude"]) if "gps_latitude" in row.keys() else False
+            has_camera = bool(row["camera_make"]) if "camera_make" in row.keys() else False
+
+            tasks.append((file_path, ext, width, height, fmt_family, file_size,
+                          has_exif_date, has_gps, has_camera, row))
 
         done_count = 0
         with ThreadPoolExecutor(max_workers=parallel) as executor:
-            future_to_row = {
-                executor.submit(_assess_one, fp, ext, w, h): (fp, ext, w, h, row)
-                for fp, ext, w, h, row in tasks
+            future_to_data = {
+                executor.submit(_assess_one, fp, ext, w, h, ff, fs, ed, gps, cam): (fp, ext, w, h, ff, fs, ed, gps, cam, row)
+                for fp, ext, w, h, ff, fs, ed, gps, cam, row in tasks
             }
-            for future in as_completed(future_to_row):
+            for future in as_completed(future_to_data):
                 done_count += 1
                 pct = done_count * 100 // len(tasks)
                 if pct >= last_pct + 5 or done_count == 1:
                     print(f"  Assessing... {done_count}/{len(tasks)} ({pct}%)")
                     last_pct = pct
 
-                fp, ext, w, h, row = future_to_row[future]
+                fp, ext, w, h, ff, fs, ed, gps, cam, row = future_to_data[future]
                 result = future.result()
                 if result is None:
                     errors += 1
                     continue
 
                 conn.execute(
-                    "UPDATE photos SET blur_score = ?, brightness = ?, contrast = ?, quality_score = ? "
+                    "UPDATE photos SET blur_score = ?, brightness = ?, contrast = ?, "
+                    "quality_score = ?, sharpness_score = ?, exposure_score = ?, "
+                    "contrast_score = ?, resolution_score = ?, format_score = ?, "
+                    "filesize_score = ?, exif_score = ? "
                     "WHERE file_path = ?",
                     (result["blur_score"], result["brightness"],
-                     result["contrast"], result["quality_score"], fp),
+                     result["contrast"], result["quality_score"],
+                     result["sharpness_score"], result["exposure_score"],
+                     result["contrast_score"], result["resolution_score"],
+                     result["format_score"], result["filesize_score"],
+                     result["exif_score"], fp),
                 )
                 assessed += 1
 
@@ -457,6 +679,13 @@ def assess_quality(index_path: str, incremental: bool = False,
                         "brightness": round(result["brightness"], 2) if result["brightness"] >= 0 else "",
                         "contrast": round(result["contrast"], 2) if result["contrast"] >= 0 else "",
                         "quality_score": result["quality_score"],
+                        "sharpness": result["sharpness_score"],
+                        "exposure": result["exposure_score"],
+                        "contrast_dim": result["contrast_score"],
+                        "resolution": result["resolution_score"],
+                        "format": result["format_score"],
+                        "filesize": result["filesize_score"],
+                        "exif": result["exif_score"],
                     })
 
         # Batch commit all results
@@ -489,6 +718,8 @@ def _write_report(rows: list, path: str) -> None:
         fieldnames = [
             "file_path", "filename", "extension", "width", "height",
             "category", "blur_score", "brightness", "contrast", "quality_score",
+            "sharpness", "exposure", "contrast_dim", "resolution",
+            "format", "filesize", "exif",
         ]
         with open(path, "w", newline="", encoding="utf-8-sig") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
@@ -539,6 +770,7 @@ def main() -> None:
         print(f"  Errors (skipped): {summary['errors']}")
     print(f"\n  Quality scores written to: {args.index}")
     print(f"  Columns added: blur_score, brightness, contrast, quality_score")
+    print(f"  Dimension scores: sharpness, exposure, contrast, resolution, format, filesize, exif")
 
 
 if __name__ == "__main__":
